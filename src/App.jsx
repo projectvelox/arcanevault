@@ -44,10 +44,21 @@ async function searchByName(query) {
   } catch { return []; }
 }
 
+// OCR scanner — lazy-loads tesseract.js only when used
+async function scanCardImage(file) {
+  const { createWorker } = await import("tesseract.js");
+  const worker = await createWorker("eng");
+  const { data: { text } } = await worker.recognize(file);
+  await worker.terminate();
+  // Card name is typically the first bold line at top of card
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  return lines[0] || "";
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // HELPERS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const fmt = (p) => p ? `$${parseFloat(p).toFixed(2)}` : "—";
+const fmt = (p) => p ? `$${parseFloat(p).toFixed(2)}` : "\u2014";
 const MCLR = { W:"#F9FAF4",U:"#0E68AB",B:"#211510",R:"#D3202A",G:"#00733E",C:"#CAC5C0" };
 const MBDR = { W:"#C4B998",U:"#064A7A",B:"#44403C",R:"#9A1620",G:"#005C30",C:"#9E9A96" };
 const MTXT = { W:"#444",U:"#fff",B:"#C9A96E",R:"#fff",G:"#fff",C:"#444" };
@@ -64,6 +75,21 @@ const store = {
   async get(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}catch{return null}},
   async set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){console.error(e)}},
 };
+
+// Card type category for grouping
+const typeCategory = (typeLine) => {
+  if (!typeLine) return "Other";
+  const t = typeLine.toLowerCase();
+  if (t.includes("creature")) return "Creatures";
+  if (t.includes("instant")) return "Instants";
+  if (t.includes("sorcery")) return "Sorceries";
+  if (t.includes("enchantment")) return "Enchantments";
+  if (t.includes("artifact")) return "Artifacts";
+  if (t.includes("planeswalker")) return "Planeswalkers";
+  if (t.includes("land")) return "Lands";
+  return "Other";
+};
+const TYPE_ORDER = ["Creatures","Planeswalkers","Instants","Sorceries","Enchantments","Artifacts","Lands","Other"];
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // BOTTOM SHEET
@@ -82,6 +108,78 @@ function BottomSheet({open,onClose,children}) {
         {children}
       </div>
       <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+    </div>
+  );
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SWIPEABLE CARD VIEWER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function CardSlider({cards,index,onIndexChange,onClose,actions}) {
+  const [dragX,setDragX]=useState(0);
+  const [dragging,setDragging]=useState(false);
+  const startX=useRef(0);
+  const card=cards[index];
+  if(!card) return null;
+
+  const onTouchStart=(e)=>{startX.current=e.touches[0].clientX;setDragging(true);setDragX(0)};
+  const onTouchMove=(e)=>{if(dragging)setDragX(e.touches[0].clientX-startX.current)};
+  const onTouchEnd=()=>{
+    setDragging(false);
+    if(dragX<-60&&index<cards.length-1) onIndexChange(index+1);
+    else if(dragX>60&&index>0) onIndexChange(index-1);
+    setDragX(0);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column"}}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#9A9DAE",fontSize:14,cursor:"pointer",padding:"8px"}}>{"\u2715"} Close</button>
+        <span style={{fontSize:12,color:"#5A5D6E"}}>{index+1} of {cards.length}</span>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>index>0&&onIndexChange(index-1)} disabled={index===0}
+            style={{background:"none",border:"1px solid #333",borderRadius:8,color:index>0?"#C9A96E":"#333",fontSize:18,width:36,height:36,cursor:"pointer"}}>{"\u2039"}</button>
+          <button onClick={()=>index<cards.length-1&&onIndexChange(index+1)} disabled={index>=cards.length-1}
+            style={{background:"none",border:"1px solid #333",borderRadius:8,color:index<cards.length-1?"#C9A96E":"#333",fontSize:18,width:36,height:36,cursor:"pointer"}}>{"\u203A"}</button>
+        </div>
+      </div>
+
+      {/* Card image with swipe */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"auto",padding:"0 16px"}}>
+        <img src={getImg(card)} alt={card.name}
+          style={{maxWidth:"85%",maxHeight:"50vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)`,transition:dragging?"none":"transform .2s",pointerEvents:"none"}}/>
+        <div style={{marginTop:12,textAlign:"center",width:"100%",maxWidth:340}}>
+          <h3 style={{margin:"0 0 4px",fontSize:20,fontWeight:800,color:"#F0D78C"}}>{card.name}</h3>
+          <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center"}}>
+            <Cost c={card.mana_cost} sz={20}/>
+            <span style={{fontSize:12,color:"#9A9DAE"}}>{card.type_line}</span>
+          </div>
+          {card.power&&<div style={{fontSize:14,color:"#C9A96E",marginTop:4,fontWeight:700}}>{card.power}/{card.toughness}</div>}
+          <div style={{marginTop:8,padding:12,background:"#16182A",borderRadius:12,fontSize:12,color:"#CCC",lineHeight:1.6,textAlign:"left"}}>
+            {(card.oracle_text||card.card_faces?.[0]?.oracle_text||"").split("\n").map((l,i,a)=><div key={i} style={{marginBottom:i<a.length-1?4:0}}>{l}</div>)}
+          </div>
+          <div style={{display:"flex",justifyContent:"center",gap:12,marginTop:8}}>
+            {[["USD",card.prices?.usd,"#4ADE80"],["Foil",card.prices?.usd_foil,"#C084FC"],["EUR",card.prices?.eur,"#60A5FA"]].map(([l,v,c])=>(
+              <span key={l} style={{fontSize:12,color:c,fontWeight:700}}>{l}: {fmt(v)}</span>
+            ))}
+          </div>
+          {/* Legalities */}
+          {card.legalities&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:8,justifyContent:"center"}}>
+            {Object.entries(card.legalities).map(([f,v])=>(
+              <span key={f} style={{
+                padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:600,textTransform:"uppercase",
+                background:v==="legal"?"#0F2A1A":v==="banned"?"#2A0F0F":"#1A1A2A",
+                color:v==="legal"?"#4ADE80":v==="banned"?"#EF4444":"#5A5D6E",
+              }}>{f}</span>
+            ))}
+          </div>}
+        </div>
+      </div>
+
+      {/* Bottom actions */}
+      {actions&&<div style={{padding:"12px 16px",flexShrink:0}}>{actions(card)}</div>}
     </div>
   );
 }
@@ -120,10 +218,7 @@ export default function App() {
 
   return (
     <div style={{minHeight:"100vh",background:"#0C0E14",fontFamily:"'SF Pro Text','Segoe UI',system-ui,sans-serif",color:"#E2E0DC",display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative"}}>
-      {/* Status bar spacer */}
       <div style={{height:8,background:"#0C0E14",flexShrink:0}}/>
-
-      {/* Content area */}
       <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
         {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks}/>}
         {tab==="decks"&&<DecksView decks={decks} setDecks={setDecks} addDeck={addDeck}/>}
@@ -131,8 +226,6 @@ export default function App() {
         {tab==="coll"&&<CollView coll={coll} setColl={setColl}/>}
         {tab==="trade"&&<TradeView/>}
       </div>
-
-      {/* Bottom Nav */}
       <div style={{
         position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,
         background:"rgba(12,14,20,.92)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
@@ -154,17 +247,23 @@ export default function App() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SEARCH (live Scryfall API)
+// SEARCH (with scanner + card slide)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function SearchView({addColl,addDeck,decks}) {
   const [q,setQ]=useState("");
   const [colors,setColors]=useState([]);
   const [type,setType]=useState("");
-  const [sel,setSel]=useState(null);
-  const [showAdd,setShowAdd]=useState(false);
   const [results,setResults]=useState([]);
   const [total,setTotal]=useState(0);
   const [loading,setLoading]=useState(false);
+  // Card slide state
+  const [slideIdx,setSlideIdx]=useState(-1);
+  const [showAdd,setShowAdd]=useState(false);
+  // Scanner state
+  const [scanning,setScanning]=useState(false);
+  const [scanStatus,setScanStatus]=useState("");
+  const [scanPreview,setScanPreview]=useState(null);
+  const fileRef=useRef();
 
   const debouncedQ = useDebounce(q, 350);
   const debouncedColors = useDebounce(colors, 350);
@@ -183,14 +282,57 @@ function SearchView({addColl,addDeck,decks}) {
 
   const hasQuery = q || colors.length || type;
 
+  // Scanner handler
+  const handleScan = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanPreview(URL.createObjectURL(file));
+    setScanning(true);
+    setScanStatus("Loading OCR engine...");
+    try {
+      setScanStatus("Scanning card...");
+      const name = await scanCardImage(file);
+      if (name) {
+        setQ(name);
+        setScanStatus(`Found: "${name}"`);
+        setTimeout(() => { setScanning(false); setScanPreview(null); }, 1200);
+      } else {
+        setScanStatus("Could not read card name. Try again.");
+        setTimeout(() => { setScanning(false); setScanPreview(null); }, 2000);
+      }
+    } catch {
+      setScanStatus("Scan failed. Try a clearer photo.");
+      setTimeout(() => { setScanning(false); setScanPreview(null); }, 2000);
+    }
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
   return (
     <div style={{padding:"0 16px"}}>
-      {/* Search input */}
+      {/* Scanner overlay */}
+      {scanning&&<div style={{position:"fixed",inset:0,zIndex:400,background:"rgba(0,0,0,.9)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:32}}>
+        {scanPreview&&<img src={scanPreview} alt="Scanned card" style={{maxWidth:"70%",maxHeight:"40vh",borderRadius:12,border:"2px solid #C9A96E"}}/>}
+        <div style={{fontSize:14,color:"#C9A96E",fontWeight:600}}>{scanStatus}</div>
+        <div style={{width:120,height:3,borderRadius:2,background:"#1E2235",overflow:"hidden"}}>
+          <div style={{width:"70%",height:"100%",background:"#C9A96E",borderRadius:2,animation:"pulse 1s ease-in-out infinite alternate"}}/>
+        </div>
+        <style>{`@keyframes pulse{from{opacity:.4;width:30%}to{opacity:1;width:80%}}`}</style>
+      </div>}
+
+      {/* Search input + scanner */}
       <div style={{position:"sticky",top:0,background:"#0C0E14",paddingTop:12,paddingBottom:8,zIndex:10}}>
-        <div style={{position:"relative"}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cards..."
-            style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:"1px solid #2A2D3E",background:"#16182A",color:"#E2E0DC",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
-          <span style={{position:"absolute",left:14,top:15,fontSize:18,opacity:.4}}>{"\u{1F50D}"}</span>
+        <div style={{display:"flex",gap:8}}>
+          <div style={{position:"relative",flex:1}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search cards..."
+              style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:"1px solid #2A2D3E",background:"#16182A",color:"#E2E0DC",fontSize:16,outline:"none",boxSizing:"border-box"}}/>
+            <span style={{position:"absolute",left:14,top:15,fontSize:18,opacity:.4}}>{"\u{1F50D}"}</span>
+          </div>
+          {/* Scanner button */}
+          <button onClick={()=>fileRef.current?.click()} style={{
+            width:52,height:52,borderRadius:14,border:"2px solid #C9A96E",background:"#16182A",
+            fontSize:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0
+          }} title="Scan card">{"\u{1F4F7}"}</button>
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
         </div>
         {/* Color filter pills */}
         <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4}}>
@@ -212,17 +354,16 @@ function SearchView({addColl,addDeck,decks}) {
           </select>
         </div>
         <div style={{fontSize:11,color:"#5A5D6E",marginTop:4}}>
-          {loading ? "Searching..." : hasQuery ? `${total.toLocaleString()} cards found (showing ${results.length})` : "Type to search all MTG cards"}
+          {loading ? "Searching..." : hasQuery ? `${total.toLocaleString()} cards found (showing ${results.length})` : "Search all MTG cards \u2022 or scan a card \u{1F4F7}"}
         </div>
       </div>
 
-      {/* Results */}
+      {/* Results grid */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4,paddingBottom:16}}>
-        {results.map(card=>(
-          <div key={card.id} onClick={()=>setSel(card)} style={{
+        {results.map((card,i)=>(
+          <div key={card.id} onClick={()=>{setSlideIdx(i);setShowAdd(false)}} style={{
             borderRadius:12,overflow:"hidden",background:"#16182A",border:"1px solid #1E2235",
-            WebkitTapHighlightColor:"transparent",cursor:"pointer",
-            transition:"transform .1s",active:{transform:"scale(.97)"}
+            WebkitTapHighlightColor:"transparent",cursor:"pointer",transition:"transform .1s"
           }}>
             <img src={getImg(card)} alt={card.name} loading="lazy"
               style={{width:"100%",display:"block",borderRadius:"12px 12px 0 0"}}/>
@@ -240,7 +381,7 @@ function SearchView({addColl,addDeck,decks}) {
       {!hasQuery&&<div style={{textAlign:"center",padding:"60px 20px",color:"#5A5D6E"}}>
         <div style={{fontSize:44,marginBottom:12}}>{"\u2728"}</div>
         <div style={{fontSize:14}}>Search the entire MTG catalog</div>
-        <div style={{fontSize:12,marginTop:4}}>Type a card name or select a color filter</div>
+        <div style={{fontSize:12,marginTop:4}}>Type a name, select colors, or scan a card</div>
       </div>}
 
       {hasQuery&&!loading&&results.length===0&&<div style={{textAlign:"center",padding:"60px 20px",color:"#5A5D6E"}}>
@@ -248,50 +389,16 @@ function SearchView({addColl,addDeck,decks}) {
         <div style={{fontSize:14}}>No cards match your search</div>
       </div>}
 
-      {/* Card Detail Bottom Sheet */}
-      <BottomSheet open={!!sel} onClose={()=>{setSel(null);setShowAdd(false)}}>
-        {sel&&(
-          <div style={{padding:"0 20px"}}>
-            <div style={{display:"flex",gap:14,paddingTop:8}}>
-              <img src={getImg(sel)} alt={sel.name} style={{width:140,borderRadius:10,flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0}}>
-                <h3 style={{margin:"0 0 6px",fontSize:18,fontWeight:800,color:"#F0D78C"}}>{sel.name}</h3>
-                <Cost c={sel.mana_cost} sz={20}/>
-                <div style={{fontSize:12,color:"#9A9DAE",marginTop:6}}>{sel.type_line}</div>
-                {sel.power&&<div style={{fontSize:13,color:"#C9A96E",marginTop:4,fontWeight:700}}>{sel.power}/{sel.toughness}</div>}
-                <div style={{fontSize:11,color:"#6B6F80",marginTop:4}}>{sel.set_name} · {sel.rarity}</div>
-              </div>
-            </div>
-
-            {/* Oracle text */}
-            <div style={{marginTop:14,padding:14,background:"#0C0E14",borderRadius:12,fontSize:13,color:"#CCC",lineHeight:1.6}}>
-              {(sel.oracle_text || sel.card_faces?.[0]?.oracle_text || "")?.split("\n").map((l,i,a)=><div key={i} style={{marginBottom:i<(a.length-1)?6:0}}>{l}</div>)}
-            </div>
-
-            {/* Prices */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:12}}>
-              {[["USD",sel.prices?.usd,"#4ADE80"],["Foil",sel.prices?.usd_foil,"#C084FC"],["EUR",sel.prices?.eur,"#60A5FA"]].map(([l,v,c])=>(
-                <div key={l} style={{background:"#0C0E14",borderRadius:10,padding:"10px 12px",textAlign:"center"}}>
-                  <div style={{fontSize:9,color:"#5A5D6E",textTransform:"uppercase",letterSpacing:.5}}>{l}</div>
-                  <div style={{fontSize:16,fontWeight:700,color:c,marginTop:2}}>{fmt(v)}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Legalities */}
-            {sel.legalities&&<div style={{display:"flex",flexWrap:"wrap",gap:4,marginTop:12}}>
-              {Object.entries(sel.legalities).map(([f,v])=>(
-                <span key={f} style={{
-                  padding:"3px 8px",borderRadius:6,fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:.3,
-                  background:v==="legal"?"#0F2A1A":v==="banned"?"#2A0F0F":"#1A1A2A",
-                  color:v==="legal"?"#4ADE80":v==="banned"?"#EF4444":"#5A5D6E",
-                }}>{f}</span>
-              ))}
-            </div>}
-
-            {/* Actions */}
-            <div style={{display:"flex",gap:10,marginTop:16,marginBottom:8}}>
-              <button onClick={()=>{addColl(sel);setSel(null)}} style={{
+      {/* Card Slider overlay */}
+      {slideIdx>=0&&results[slideIdx]&&<CardSlider
+        cards={results}
+        index={slideIdx}
+        onIndexChange={setSlideIdx}
+        onClose={()=>setSlideIdx(-1)}
+        actions={(card)=>(
+          <div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{addColl(card);setSlideIdx(-1)}} style={{
                 flex:1,padding:"14px",borderRadius:12,border:"none",
                 background:"linear-gradient(135deg,#C9A96E,#A88B4A)",color:"#000",
                 fontSize:14,fontWeight:700,cursor:"pointer"
@@ -301,11 +408,11 @@ function SearchView({addColl,addDeck,decks}) {
                 background:"transparent",color:"#C9A96E",fontSize:14,fontWeight:700,cursor:"pointer"
               }}>+ Deck</button>
             </div>
-            {showAdd&&decks.length>0&&<div style={{marginBottom:12}}>
+            {showAdd&&decks.length>0&&<div style={{marginTop:8}}>
               {decks.map(d=>(
-                <button key={d.id} onClick={()=>{addDeck(d.id,sel);setSel(null);setShowAdd(false)}} style={{
+                <button key={d.id} onClick={()=>{addDeck(d.id,card);setSlideIdx(-1);setShowAdd(false)}} style={{
                   display:"block",width:"100%",padding:"12px 14px",marginBottom:4,borderRadius:10,
-                  border:"1px solid #2A2D3E",background:"#0C0E14",color:"#E2E0DC",
+                  border:"1px solid #2A2D3E",background:"#16182A",color:"#E2E0DC",
                   fontSize:13,cursor:"pointer",textAlign:"left"
                 }}>{d.name} <span style={{color:"#5A5D6E",fontSize:11}}>({d.format})</span></button>
               ))}
@@ -313,13 +420,13 @@ function SearchView({addColl,addDeck,decks}) {
             {showAdd&&decks.length===0&&<div style={{padding:12,color:"#5A5D6E",fontSize:12,textAlign:"center"}}>Create a deck first in the Decks tab</div>}
           </div>
         )}
-      </BottomSheet>
+      />}
     </div>
   );
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// DECKS
+// DECKS (Manabox-style)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function DecksView({decks,setDecks,addDeck}) {
   const [active,setActive]=useState(null);
@@ -328,6 +435,7 @@ function DecksView({decks,setDecks,addDeck}) {
   const [format,setFormat]=useState("commander");
   const [addQ,setAddQ]=useState("");
   const [addResults,setAddResults]=useState([]);
+  const [viewMode,setViewMode]=useState("visual"); // "visual" or "list"
 
   const debouncedAddQ = useDebounce(addQ, 350);
   useEffect(()=>{
@@ -360,14 +468,27 @@ function DecksView({decks,setDecks,addDeck}) {
       const cmc=Math.min(Math.floor(c.cmc||0),7);
       curve[cmc]=(curve[cmc]||0)+c.qty;
       (c.mana_cost?.match(/\{([WUBRGC])\}/g)||[]).forEach(m=>{const s=m[1];clrs[s]=(clrs[s]||0)+c.qty});
-      const tp=(c.type_line||"").split("\u2014")[0].trim().split(" ").pop();
-      if(tp)types[tp]=(types[tp]||0)+c.qty;
+      const tp=typeCategory(c.type_line);
+      types[tp]=(types[tp]||0)+c.qty;
       if(c.prices?.usd)val+=parseFloat(c.prices.usd)*c.qty;
     });
     const total=deck.cards.reduce((a,c)=>a+c.qty,0);
     return{curve,clrs,types,val,total};
   },[deck]);
 
+  // Group cards by type for visual view
+  const grouped=useMemo(()=>{
+    if(!deck)return {};
+    const g={};
+    deck.cards.filter(c=>c.board==="main"||c.board==="commander").forEach(c=>{
+      const cat=typeCategory(c.type_line);
+      if(!g[cat])g[cat]=[];
+      g[cat].push(c);
+    });
+    return g;
+  },[deck]);
+
+  // Deck list view
   if(!active) return (
     <div style={{padding:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -385,57 +506,103 @@ function DecksView({decks,setDecks,addDeck}) {
         </div>
       </div>}
       {decks.length===0?<div style={{textAlign:"center",padding:"60px 20px",color:"#5A5D6E"}}><div style={{fontSize:44,marginBottom:12}}>{"\u{1F4DA}"}</div>No decks yet</div>
-      :decks.map(d=>{const n=d.cards.reduce((a,c)=>a+c.qty,0);const v=d.cards.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)*c.qty),0);return(
-        <div key={d.id} onClick={()=>setActive(d.id)} style={{background:"#16182A",border:"1px solid #1E2235",borderRadius:14,padding:16,marginBottom:8,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <div>
-            <div style={{fontSize:15,fontWeight:700}}>{d.name}</div>
-            <div style={{fontSize:12,color:"#5A5D6E",marginTop:2}}>{d.format[0].toUpperCase()+d.format.slice(1)} · {n} cards</div>
+      :decks.map(d=>{
+        const n=d.cards.reduce((a,c)=>a+c.qty,0);
+        const v=d.cards.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)*c.qty),0);
+        // Show top 4 card images as preview
+        const preview=d.cards.slice(0,4);
+        return(
+          <div key={d.id} onClick={()=>setActive(d.id)} style={{background:"#16182A",border:"1px solid #1E2235",borderRadius:14,padding:14,marginBottom:10,cursor:"pointer"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:16,fontWeight:700}}>{d.name}</div>
+                <div style={{fontSize:12,color:"#5A5D6E",marginTop:2}}>{d.format[0].toUpperCase()+d.format.slice(1)} \u2022 {n} cards</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:15,fontWeight:700,color:"#4ADE80"}}>{fmt(v.toFixed(2))}</div>
+                <button onClick={e=>{e.stopPropagation();setDecks(p=>p.filter(x=>x.id!==d.id))}} style={{marginTop:4,padding:"4px 10px",borderRadius:6,border:"1px solid #444",background:"transparent",color:"#EF4444",fontSize:10,cursor:"pointer"}}>Delete</button>
+              </div>
+            </div>
+            {/* Card image preview strip */}
+            {preview.length>0&&<div style={{display:"flex",gap:6,marginTop:10,overflow:"hidden"}}>
+              {preview.map(c=>(
+                <img key={c.id} src={getImg(c,"small")} alt={c.name} style={{width:48,height:67,borderRadius:4,objectFit:"cover",border:"1px solid #2A2D3E"}}/>
+              ))}
+              {n>4&&<div style={{width:48,height:67,borderRadius:4,background:"#0C0E14",border:"1px solid #2A2D3E",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:"#5A5D6E"}}>+{n-4}</div>}
+            </div>}
           </div>
-          <div style={{textAlign:"right"}}>
-            <div style={{fontSize:14,fontWeight:700,color:"#4ADE80"}}>{fmt(v.toFixed(2))}</div>
-            <button onClick={e=>{e.stopPropagation();setDecks(p=>p.filter(x=>x.id!==d.id))}} style={{marginTop:4,padding:"4px 10px",borderRadius:6,border:"1px solid #444",background:"transparent",color:"#EF4444",fontSize:10,cursor:"pointer"}}>Delete</button>
-          </div>
-        </div>
-      )})}
+        );
+      })}
     </div>
   );
 
-  // Deck editor
+  // Deck editor (Manabox-style)
   const mx=Math.max(...Object.values(stats?.curve||{0:1}),1);
+  const totalClrs=Object.values(stats?.clrs||{}).reduce((a,b)=>a+b,0)||1;
+
   return (
     <div style={{padding:16}}>
       <button onClick={()=>setActive(null)} style={{padding:"8px 14px",borderRadius:8,border:"1px solid #2A2D3E",background:"transparent",color:"#5A5D6E",fontSize:13,cursor:"pointer",marginBottom:12}}>{"\u2190"} Back</button>
-      <h2 style={{margin:"0 0 2px",fontSize:18,fontWeight:800,color:"#F0D78C"}}>{deck.name}</h2>
-      <div style={{fontSize:12,color:"#5A5D6E",marginBottom:14}}>{deck.format} · {stats.total} cards · {fmt(stats.val.toFixed(2))}</div>
 
-      {/* Mana Curve */}
-      <div style={{background:"#16182A",borderRadius:14,border:"1px solid #1E2235",padding:14,marginBottom:12}}>
-        <div style={{fontSize:11,color:"#5A5D6E",marginBottom:8,fontWeight:600}}>Mana Curve</div>
-        <div style={{display:"flex",alignItems:"flex-end",gap:4,height:56}}>
-          {[0,1,2,3,4,5,6,7].map(cmc=>(
-            <div key={cmc} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
-              <div style={{fontSize:9,color:"#5A5D6E",marginBottom:2}}>{stats.curve[cmc]||0}</div>
-              <div style={{width:"100%",borderRadius:"4px 4px 0 0",height:`${((stats.curve[cmc]||0)/mx)*40}px`,background:"linear-gradient(180deg,#C9A96E,#7A6530)",transition:"height .3s"}}/>
-              <div style={{fontSize:9,color:"#5A5D6E",marginTop:2}}>{cmc===7?"7+":cmc}</div>
-            </div>
-          ))}
+      {/* Deck header */}
+      <div style={{background:"#16182A",borderRadius:16,border:"1px solid #1E2235",padding:16,marginBottom:12}}>
+        <h2 style={{margin:"0 0 2px",fontSize:20,fontWeight:800,color:"#F0D78C"}}>{deck.name}</h2>
+        <div style={{display:"flex",gap:12,fontSize:12,color:"#5A5D6E",marginBottom:12}}>
+          <span>{deck.format[0].toUpperCase()+deck.format.slice(1)}</span>
+          <span>{stats.total} cards</span>
+          <span style={{color:"#4ADE80",fontWeight:700}}>{fmt(stats.val.toFixed(2))}</span>
         </div>
+
+        {/* Mana Curve */}
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:10,color:"#5A5D6E",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>Mana Curve</div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:4,height:56}}>
+            {[0,1,2,3,4,5,6,7].map(cmc=>(
+              <div key={cmc} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{fontSize:9,color:"#5A5D6E",marginBottom:2}}>{stats.curve[cmc]||0}</div>
+                <div style={{width:"100%",borderRadius:"4px 4px 0 0",height:`${((stats.curve[cmc]||0)/mx)*40}px`,background:"linear-gradient(180deg,#C9A96E,#7A6530)",transition:"height .3s"}}/>
+                <div style={{fontSize:9,color:"#5A5D6E",marginTop:2}}>{cmc===7?"7+":cmc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Color pie */}
+        {Object.keys(stats.clrs).length>0&&<div>
+          <div style={{fontSize:10,color:"#5A5D6E",marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>Colors</div>
+          <div style={{display:"flex",gap:0,height:8,borderRadius:4,overflow:"hidden",marginBottom:6}}>
+            {Object.entries(stats.clrs).map(([c,n])=>(
+              <div key={c} style={{width:`${(n/totalClrs)*100}%`,background:MCLR[c],height:"100%"}}/>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {Object.entries(stats.clrs).map(([c,n])=><div key={c} style={{display:"flex",alignItems:"center",gap:3}}><Pip s={c} sz={16}/><span style={{fontSize:11,color:"#9A9DAE"}}>{n}</span></div>)}
+          </div>
+        </div>}
+
+        {/* Type breakdown */}
+        {Object.keys(stats.types).length>0&&<div style={{marginTop:10}}>
+          <div style={{fontSize:10,color:"#5A5D6E",marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5}}>Types</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+            {TYPE_ORDER.filter(t=>stats.types[t]).map(t=>(
+              <span key={t} style={{padding:"3px 8px",borderRadius:6,background:"#0C0E14",fontSize:10,color:"#9A9DAE"}}>{t} {stats.types[t]}</span>
+            ))}
+          </div>
+        </div>}
       </div>
 
-      {/* Color distribution */}
-      {Object.keys(stats.clrs).length>0&&<div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-        {Object.entries(stats.clrs).map(([c,n])=><div key={c} style={{display:"flex",alignItems:"center",gap:4,background:"#16182A",borderRadius:10,padding:"6px 10px"}}><Pip s={c} sz={20}/><span style={{fontSize:14,fontWeight:700}}>{n}</span></div>)}
-      </div>}
-
-      {/* Add cards */}
+      {/* Add cards search */}
       <input value={addQ} onChange={e=>setAddQ(e.target.value)} placeholder="Search cards to add..."
         style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1px solid #2A2D3E",background:"#16182A",color:"#E2E0DC",fontSize:14,boxSizing:"border-box",marginBottom:4}}/>
       {addResults.length>0&&<div style={{background:"#16182A",borderRadius:12,border:"1px solid #2A2D3E",marginBottom:12,overflow:"hidden"}}>
         {addResults.map(c=>(
-          <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderBottom:"1px solid #1E2235"}}>
+          <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:"1px solid #1E2235"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}}>
-              <Cost c={c.mana_cost} sz={14}/>
-              <span style={{fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</span>
+              <img src={getImg(c,"small")} alt={c.name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{fontSize:12,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                <Cost c={c.mana_cost} sz={12}/>
+              </div>
             </div>
             <div style={{display:"flex",gap:4,flexShrink:0}}>
               <button onClick={()=>addDeck(active,c,"main")} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"#C9A96E",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer"}}>Main</button>
@@ -445,15 +612,44 @@ function DecksView({decks,setDecks,addDeck}) {
         ))}
       </div>}
 
-      {/* Card list by board */}
-      {["commander","main","sideboard"].map(board=>{
+      {/* View toggle */}
+      <div style={{display:"flex",gap:4,marginBottom:10}}>
+        <button onClick={()=>setViewMode("visual")} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:viewMode==="visual"?"#C9A96E":"#16182A",color:viewMode==="visual"?"#000":"#5A5D6E",fontSize:11,fontWeight:700,cursor:"pointer"}}>Visual</button>
+        <button onClick={()=>setViewMode("list")} style={{flex:1,padding:"8px",borderRadius:8,border:"none",background:viewMode==="list"?"#C9A96E":"#16182A",color:viewMode==="list"?"#000":"#5A5D6E",fontSize:11,fontWeight:700,cursor:"pointer"}}>List</button>
+      </div>
+
+      {/* Visual view — grouped by type with card images */}
+      {viewMode==="visual"&&TYPE_ORDER.map(cat=>{
+        const cards=grouped[cat];
+        if(!cards||!cards.length) return null;
+        const catTotal=cards.reduce((a,c)=>a+c.qty,0);
+        return <div key={cat} style={{marginBottom:14}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:12,fontWeight:700,color:"#C9A96E",textTransform:"uppercase",letterSpacing:.5}}>{cat}</span>
+            <span style={{fontSize:11,color:"#5A5D6E"}}>{catTotal}</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+            {cards.map(c=>(
+              <div key={c.id+c.board} style={{position:"relative"}}>
+                <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",borderRadius:6,display:"block"}}/>
+                {c.qty>1&&<div style={{position:"absolute",top:2,right:2,background:"#C9A96E",color:"#000",borderRadius:6,padding:"1px 5px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
+                <button onClick={()=>rmCard(c.id,c.board)} style={{position:"absolute",bottom:2,right:2,width:20,height:20,borderRadius:10,border:"none",background:"rgba(0,0,0,.7)",color:"#EF4444",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+              </div>
+            ))}
+          </div>
+        </div>;
+      })}
+
+      {/* List view — classic board grouping */}
+      {viewMode==="list"&&["commander","main","sideboard"].map(board=>{
         const cards=deck.cards.filter(c=>c.board===board);if(!cards.length)return null;
         return <div key={board} style={{marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#C9A96E",textTransform:"uppercase",marginBottom:6,letterSpacing:.5}}>{board} ({cards.reduce((a,c)=>a+c.qty,0)})</div>
           {cards.map(c=>(
-            <div key={c.id+c.board} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",borderRadius:8,marginBottom:2,background:"#16182A"}}>
+            <div key={c.id+c.board} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 10px",borderRadius:8,marginBottom:2,background:"#16182A"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}}>
                 <span style={{fontSize:12,color:"#5A5D6E",width:22,textAlign:"center"}}>{c.qty}x</span>
+                <img src={getImg(c,"small")} alt={c.name} style={{width:24,height:34,borderRadius:2,objectFit:"cover"}}/>
                 <Cost c={c.mana_cost} sz={13}/>
                 <span style={{fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</span>
               </div>
@@ -465,6 +661,20 @@ function DecksView({decks,setDecks,addDeck}) {
           ))}
         </div>;
       })}
+
+      {/* Sideboard section in visual mode */}
+      {viewMode==="visual"&&deck.cards.filter(c=>c.board==="sideboard").length>0&&<div style={{marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#9A9DAE",textTransform:"uppercase",letterSpacing:.5,marginBottom:6,paddingTop:8,borderTop:"1px solid #1E2235"}}>Sideboard</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+          {deck.cards.filter(c=>c.board==="sideboard").map(c=>(
+            <div key={c.id+"sb"} style={{position:"relative"}}>
+              <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",borderRadius:6,display:"block",opacity:.7}}/>
+              {c.qty>1&&<div style={{position:"absolute",top:2,right:2,background:"#666",color:"#fff",borderRadius:6,padding:"1px 5px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
+              <button onClick={()=>rmCard(c.id,c.board)} style={{position:"absolute",bottom:2,right:2,width:20,height:20,borderRadius:10,border:"none",background:"rgba(0,0,0,.7)",color:"#EF4444",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            </div>
+          ))}
+        </div>
+      </div>}
     </div>
   );
 }
@@ -564,7 +774,6 @@ function CollView({coll,setColl}) {
     <div style={{padding:16}}>
       <h2 style={{margin:"0 0 12px",fontSize:20,fontWeight:800,color:"#F0D78C"}}>Collection</h2>
 
-      {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
         {[["Unique",coll.length,"#E2E0DC"],["Total",totalCards,"#E2E0DC"],["Value","$"+totalVal.toFixed(2),"#4ADE80"]].map(([l,v,c])=>(
           <div key={l} style={{background:"#16182A",borderRadius:12,border:"1px solid #1E2235",padding:"12px",textAlign:"center"}}>
@@ -656,7 +865,6 @@ function TradeView() {
     <div style={{padding:16}}>
       <h2 style={{margin:"0 0 14px",fontSize:20,fontWeight:800,color:"#F0D78C"}}>Trade Tool</h2>
 
-      {/* Search overlay */}
       <BottomSheet open={!!side} onClose={()=>setSide(null)}>
         <div style={{padding:"8px 20px 20px"}}>
           <div style={{fontSize:14,fontWeight:700,color:"#F0D78C",marginBottom:10}}>Add to {side==="give"?"Give":"Receive"}</div>
