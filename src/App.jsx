@@ -461,6 +461,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
   const [dragX,setDragX]=useState(0);const [dragging,setDragging]=useState(false);
   const [printings,setPrintings]=useState([]);const [showPrintings,setShowPrintings]=useState(false);
   const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
+  const [flipped,setFlipped]=useState(false);
   const startX=useRef(0);const card=cards[index]; if(!card) return null;
   const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
   const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
@@ -481,7 +482,10 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
       </div>
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"auto",padding:"0 16px"}}>
-      <img src={getImg(card)} alt={card.name} style={{maxWidth:"85%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)`,transition:dragging?"none":"transform .2s",pointerEvents:"none"}}/>
+      <div style={{position:"relative",maxWidth:"85%"}}>
+        <img src={flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card)} alt={card.name} style={{width:"100%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)${flipped?" rotateY(180deg)":""}`,transition:dragging?"none":"transform .4s",pointerEvents:"none",objectFit:"contain"}}/>
+        {card.card_faces?.length>1&&card.card_faces[1]?.image_uris&&<button onClick={()=>setFlipped(!flipped)} style={{position:"absolute",bottom:8,right:8,width:36,height:36,borderRadius:18,background:"rgba(0,0,0,.7)",border:`1.5px solid ${T.gold}`,color:T.gold,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}} title="Flip card">{"\u21BB"}</button>}
+      </div>
       <div style={{marginTop:12,textAlign:"center",width:"100%",maxWidth:340}}>
         <h3 style={{margin:"0 0 4px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{card.name}</h3>
         <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center",flexWrap:"wrap"}}>
@@ -500,6 +504,13 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
             <span key={l} style={{fontSize:11,color:c,fontWeight:700,fontFamily:F.body}}>{l}: {l==="MTGO"?v:fmt(v)}</span>
           )}
         </div>
+        {/* Purchase links */}
+        {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
+          {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
+          {card.purchase_uris.cardmarket&&<a href={card.purchase_uris.cardmarket} target="_blank" rel="noopener" style={{fontSize:10,color:T.blue,fontFamily:F.body,textDecoration:"underline"}}>Cardmarket</a>}
+          {card.purchase_uris.cardhoarder&&<a href={card.purchase_uris.cardhoarder} target="_blank" rel="noopener" style={{fontSize:10,color:"#E8C349",fontFamily:F.body,textDecoration:"underline"}}>Cardhoarder</a>}
+        </div>}
+        {card.scryfall_uri&&<div style={{textAlign:"center",marginTop:4}}><a href={card.scryfall_uri} target="_blank" rel="noopener" style={{fontSize:10,color:T.textDim,fontFamily:F.body,textDecoration:"underline"}}>View on Scryfall</a></div>}
         <div style={{display:"flex",gap:6,marginTop:8,justifyContent:"center"}}>
           <button onClick={loadPrintings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showPrintings?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
             {showPrintings?"Hide":"Printings"}
@@ -600,6 +611,11 @@ export default function App() {
   // Load data: Supabase if logged in, IndexedDB if not
   useEffect(()=>{(async()=>{
     if(user){
+      // Check for local data to merge on first login
+      const localBinders=await store.get("av-binders");
+      const localDecks=await store.get("av-decks");
+      const hasLocalData=(localBinders&&localBinders.some(b=>b.cards?.length>0))||(localDecks&&localDecks.length>0);
+
       // Load from Supabase
       const{data:sBinds}=await bindersApi.list();
       if(sBinds&&sBinds.length){
@@ -618,6 +634,42 @@ export default function App() {
           return{...d,cards:(cards||[]).map(c=>({...c,id:c.scryfall_id,board:c.board||"main",image_uris:c.image_uris||{},prices:c.prices||{},legalities:c.legalities||{},color_identity:c.color_identity||[]})),tags:d.tags||[],notes:d.notes||""};
         }));
         setDecks(fullDecks);
+      }
+
+      // Merge local data to cloud on first login
+      if(hasLocalData&&sBinds){
+        const collBinder=sBinds.find(b=>b.binder_type==="collection");
+        if(collBinder&&localBinders){
+          for(const lb of localBinders){
+            if(lb.cards?.length){
+              for(const c of lb.cards){
+                try{await cardsApi.add(collBinder.id,{...c,id:c.scryfall_id||c.id},{condition:c.condition||"NM",foil:c.foil||false,language:c.language||"en",qty:c.qty||1})}catch{}
+              }
+            }
+          }
+        }
+        if(localDecks){
+          for(const ld of localDecks){
+            try{
+              const{data:nd}=await decksApi.create(ld.name,ld.format,ld.tags||[]);
+              if(nd&&ld.cards){for(const c of ld.cards){try{await deckCardsApi.add(nd.id,{...c,id:c.scryfall_id||c.id},c.board||"main")}catch{}}}
+            }catch{}
+          }
+        }
+        // Clear local data after merge
+        await store.set("av-binders",null);await store.set("av-decks",null);
+        toast("Local data synced to cloud!");
+        // Reload from Supabase
+        const{data:refreshedBinds}=await bindersApi.list();
+        if(refreshedBinds){
+          const rb=await Promise.all(refreshedBinds.map(async b=>{const{data:cards}=await cardsApi.list(b.id);return{...b,cards:(cards||[]).map(c=>({...c,id:c.scryfall_id,image_uris:c.image_uris||{},prices:c.prices||{},legalities:c.legalities||{},color_identity:c.color_identity||[]}))};}));
+          setBinders(rb);if(rb[0])setActiveBinder(rb[0].id);
+        }
+        const{data:refreshedDecks}=await decksApi.list();
+        if(refreshedDecks){
+          const rd=await Promise.all(refreshedDecks.map(async d=>{const{data:cards}=await deckCardsApi.list(d.id);return{...d,cards:(cards||[]).map(c=>({...c,id:c.scryfall_id,board:c.board||"main",image_uris:c.image_uris||{},prices:c.prices||{},legalities:c.legalities||{},color_identity:c.color_identity||[]})),tags:d.tags||[],notes:d.notes||""};}));
+          setDecks(rd);
+        }
       }
     }else{
       // Load from IndexedDB (offline mode)
@@ -1548,7 +1600,10 @@ function TradeView({toast}) {
   const dQ=useDebounce(q,350);
   useEffect(()=>{let c=false;if(dQ.length<2){setResults([]);return;}searchCards(dQ).then(r=>{if(!c)setResults(r)});return()=>{c=true}},[dQ]);
   // Load trade history
-  useEffect(()=>{store.get("av-trade-history").then(h=>{if(h)setHistory(h)})},[]);
+  useEffect(()=>{
+    if(supabase){tradeApi.list().then(({data})=>{if(data&&data.length)setHistory(data.map(t=>({id:t.id,date:t.trade_date,give:t.give,recv:t.recv,giveTotal:t.give_total,recvTotal:t.recv_total})))})}
+    else{store.get("av-trade-history").then(h=>{if(h)setHistory(h)})}
+  },[]);
 
   const add=card=>{const e={...card,uid:Date.now(),qty:1};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
   const adjTrade=(list,setList,uid,d)=>setList(p=>p.map(c=>{if(c.uid!==uid)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
@@ -1556,10 +1611,12 @@ function TradeView({toast}) {
   const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
   const diff=giveT-recvT;
   const clearAll=()=>{setGive([]);setRecv([]);toast("Trade cleared","info")};
-  const saveTrade=()=>{
+  const saveTrade=async()=>{
     if(!give.length&&!recv.length)return;
     const entry={id:Date.now(),date:new Date().toISOString().split("T")[0],give:give.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),recv:recv.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),giveTotal:giveT,recvTotal:recvT};
-    const newH=[entry,...history].slice(0,20);setHistory(newH);store.set("av-trade-history",newH);
+    const newH=[entry,...history].slice(0,20);setHistory(newH);
+    if(supabase){try{await tradeApi.save(entry)}catch{}}
+    else{store.set("av-trade-history",newH)}
     toast("Trade saved to history");setGive([]);setRecv([]);
   };
 
