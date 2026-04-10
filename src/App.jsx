@@ -132,6 +132,7 @@ async function preprocessImage(file) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
+      URL.revokeObjectURL(img.src);
       const canvas = document.createElement("canvas");
       // Crop to top 18% (title bar region of a standard MTG card)
       const cropH = Math.round(img.height * 0.18);
@@ -151,7 +152,7 @@ async function preprocessImage(file) {
       ctx.putImageData(imageData, 0, 0);
       canvas.toBlob(resolve, "image/png");
     };
-    img.onerror = () => resolve(file); // Fallback to original
+    img.onerror = () => { URL.revokeObjectURL(img.src); resolve(file); }; // Fallback to original
     img.src = URL.createObjectURL(file);
   });
 }
@@ -180,9 +181,13 @@ async function scanCardImage(file) {
     const processed = await preprocessImage(file);
     worker = await Promise.race([
       getOcrWorker(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("OCR timeout")), 15000))
+    ]);
+    // Timeout covers the full recognize call too
+    const { data: { text } } = await Promise.race([
+      worker.recognize(processed || file),
       new Promise((_, rej) => setTimeout(() => rej(new Error("OCR timeout")), 20000))
     ]);
-    const { data: { text } } = await worker.recognize(processed || file);
     const rawLine = (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
     if (!rawLine) return "";
     scheduleWorkerCleanup();
@@ -1019,6 +1024,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const [showBurst,setShowBurst]=useState(false);
+  const scanAbort=useRef(false);
   const fileRef=useRef();
 
   useEffect(()=>{fetchSets().then(setSets);fetchRandomCard().then(setCotd)},[]);
@@ -1041,10 +1047,11 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];if(!file)return;
     const blobUrl=URL.createObjectURL(file);
-    setScanPreview(blobUrl);setScanning(true);setScanStatus("Loading OCR engine...");
+    setScanPreview(blobUrl);setScanning(true);setScanStatus("Loading OCR engine...");scanAbort.current=false;
     try{
       setScanStatus("Scanning card text...");
       const name=await scanCardImage(file);
+      if(scanAbort.current){URL.revokeObjectURL(blobUrl);return;} // Cancelled during scan
       if(name){setQ(name);setScanStatus(`Found: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},1200)}
       else{setScanStatus("Could not read card name. Try better lighting.");setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},2500)}
     }catch(err){
@@ -1061,7 +1068,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       <div style={{width:120,height:3,borderRadius:2,background:T.cardBorder,overflow:"hidden"}}><div style={{width:"70%",height:"100%",background:T.gold,borderRadius:2,animation:"pulse 1s ease-in-out infinite alternate"}}/></div>
       <div style={{display:"flex",gap:10,marginTop:8}}>
         <button onClick={()=>fileRef.current?.click()} style={{padding:"10px 20px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Retry</button>
-        <button onClick={()=>{setScanning(false);setScanPreview(null)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Cancel</button>
+        <button onClick={()=>{scanAbort.current=true;setScanning(false);setScanPreview(null)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Cancel</button>
       </div>
     </div>}
 
