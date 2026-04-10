@@ -125,6 +125,30 @@ async function fetchSets() {
   } catch { return []; }
 }
 
+// Offline search cache — store recent search results in IndexedDB
+const searchCache = { data: null, loaded: false };
+async function getCachedCards() {
+  if (searchCache.loaded) return searchCache.data || [];
+  const cached = await store.get("av-card-cache");
+  searchCache.data = cached || [];
+  searchCache.loaded = true;
+  return searchCache.data;
+}
+async function cacheSearchResults(cards) {
+  const existing = await getCachedCards();
+  const map = new Map(existing.map(c => [c.id, c]));
+  cards.forEach(c => map.set(c.id, { id: c.id, name: c.name, set: c.set, set_name: c.set_name, mana_cost: c.mana_cost, cmc: c.cmc, type_line: c.type_line, rarity: c.rarity, color_identity: c.color_identity, prices: c.prices, image_uris: c.image_uris, oracle_text: c.oracle_text }));
+  const all = [...map.values()].slice(-2000); // Keep last 2000 unique cards
+  searchCache.data = all;
+  await store.set("av-card-cache", all);
+}
+async function offlineSearch(query) {
+  const cards = await getCachedCards();
+  if (!cards.length) return [];
+  const q = query.toLowerCase();
+  return cards.filter(c => c.name?.toLowerCase().includes(q) || (c.type_line||"").toLowerCase().includes(q) || (c.oracle_text||"").toLowerCase().includes(q)).slice(0, 20);
+}
+
 async function fetchRandomCard() {
   try {
     await scryfallThrottle();
@@ -619,6 +643,33 @@ function ToastContainer({ toasts }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SKELETON LOADING
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Virtual scrolling for large lists (renders only visible items)
+function VirtualList({items,rowHeight=72,renderItem,containerStyle={}}) {
+  const [scrollTop,setScrollTop]=useState(0);
+  const containerRef=useRef(null);
+  const totalHeight=items.length*rowHeight;
+  const viewportH=typeof window!=="undefined"?window.innerHeight:800;
+  const startIdx=Math.max(0,Math.floor(scrollTop/rowHeight)-5);
+  const endIdx=Math.min(items.length,Math.ceil((scrollTop+viewportH)/rowHeight)+5);
+  const visibleItems=items.slice(startIdx,endIdx);
+
+  useEffect(()=>{
+    const el=containerRef.current?.closest("[style*='overflow']")||window;
+    const onScroll=()=>{
+      const st=el===window?window.scrollY:(el.scrollTop||0);
+      setScrollTop(st);
+    };
+    el.addEventListener("scroll",onScroll,{passive:true});
+    return()=>el.removeEventListener("scroll",onScroll);
+  },[]);
+
+  return <div ref={containerRef} style={{position:"relative",height:totalHeight,...containerStyle}}>
+    <div style={{position:"absolute",top:startIdx*rowHeight,left:0,right:0}}>
+      {visibleItems.map((item,i)=>renderItem(item,startIdx+i))}
+    </div>
+  </div>;
+}
+
 function SkeletonGrid({count=6}) {
   return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4}}>
     {Array.from({length:count}).map((_,i)=><div key={i} style={{borderRadius:12,overflow:"hidden",background:T.card,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
@@ -659,11 +710,31 @@ function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CARD SLIDER (universal detail viewer)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Mini price sparkline (CSS-only bar chart from snapshot data)
+function PriceSparkline({snapshots}) {
+  if(!snapshots||snapshots.length<2) return null;
+  const prices=snapshots.map(s=>s.price_usd).filter(Boolean);
+  if(prices.length<2) return null;
+  const max=Math.max(...prices);const min=Math.min(...prices);const range=max-min||1;
+  const first=prices[0];const last=prices[prices.length-1];
+  const delta=last-first;const pct=first?Math.round((delta/first)*100):0;
+  return <div style={{marginTop:6}}>
+    <div style={{display:"flex",alignItems:"flex-end",gap:1,height:24}}>
+      {prices.slice(-14).map((p,i)=><div key={i} style={{flex:1,height:`${Math.max(4,((p-min)/range)*20)}px`,borderRadius:1,background:p>=first?T.green:T.red,opacity:.7}}/>)}
+    </div>
+    <div style={{fontSize:9,color:delta>=0?T.green:T.red,fontFamily:F.body,marginTop:2}}>
+      {delta>=0?"+":""}{delta.toFixed(2)} ({pct>=0?"+":""}{pct}%) over {prices.length} snapshots
+    </div>
+  </div>;
+}
+
 function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast}) {
   const [dragX,setDragX]=useState(0);const [dragging,setDragging]=useState(false);
   const [printings,setPrintings]=useState([]);const [showPrintings,setShowPrintings]=useState(false);
   const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
   const [flipped,setFlipped]=useState(false);
+  const [priceSnaps,setPriceSnaps]=useState([]);
+  useEffect(()=>{if(supabase&&card?.id)priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))},[card?.id]);
   const startX=useRef(0);const card=cards[index]; if(!card) return null;
   const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
   const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
@@ -712,8 +783,9 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
           <span style={{fontSize:10,fontFamily:F.body,color:T.textDim}}>
             {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
           </span>
-          {supabase&&sliderToast&&<button onClick={async()=>{await priceApi.addSnapshot(card);sliderToast(`${card.name} added to price watch`)}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
+          {supabase&&sliderToast&&<button onClick={async()=>{await priceApi.addSnapshot(card);sliderToast(`${card.name} added to price watch`);priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
         </div>}
+        <PriceSparkline snapshots={priceSnaps}/>
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
           {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
           {card.purchase_uris.cardmarket&&<a href={card.purchase_uris.cardmarket} target="_blank" rel="noopener" style={{fontSize:10,color:T.blue,fontFamily:F.body,textDecoration:"underline"}}>Cardmarket</a>}
@@ -1050,7 +1122,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const [showBurst,setShowBurst]=useState(false);
-  const scanAbort=useRef(false);
+  const scanAbort=useRef(false);const [scanCount,setScanCount]=useState(0);const [batchMode,setBatchMode]=useState(false);
   const fileRef=useRef();
 
   useEffect(()=>{fetchSets().then(setSets);fetchRandomCard().then(setCotd)},[]);
@@ -1064,7 +1136,14 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     let cancelled=false;const has=dQ||dC.length||dT||dS||dR||dCmc||dOT;
     if(!has){setResults([]);setTotal(0);return;}
     setLoading(true);
-    searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{if(!cancelled){setResults(res.data);setTotal(res.total);setNextPage(res.nextPage);setLoading(false)}});
+    searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{
+      if(!cancelled){setResults(res.data);setTotal(res.total);setNextPage(res.nextPage);setLoading(false);
+        if(res.data.length)cacheSearchResults(res.data); // Cache for offline
+      }
+    }).catch(async()=>{
+      // Offline fallback
+      if(!cancelled){const offline=await offlineSearch(dQ);setResults(offline);setTotal(offline.length);setLoading(false)}
+    });
     return()=>{cancelled=true};
   },[dQ,dC,dT,dS,dR,dCmc,dOT]);
 
@@ -1078,7 +1157,17 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       setScanStatus("Scanning card text...");
       const name=await scanCardImage(file);
       if(scanAbort.current){URL.revokeObjectURL(blobUrl);return;} // Cancelled during scan
-      if(name){setQ(name);setScanStatus(`Found: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},1200)}
+      if(name){
+        setScanCount(c=>c+1);
+        if(batchMode){
+          // Batch: auto-add to collection and keep scanning
+          try{await scryfallThrottle();const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(name)}`);if(res.ok){const card=await res.json();addColl(card)}}catch{}
+          setScanStatus(`Added: "${name}" (${scanCount+1} scanned)`);URL.revokeObjectURL(blobUrl);
+          setTimeout(()=>{if(fileRef.current)fileRef.current.click()},800); // Auto-reopen camera
+        } else {
+          setQ(name);setScanStatus(`Found: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},1200);
+        }
+      }
       else{setScanStatus("Could not read card name. Try a closer photo with good lighting.");setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},4000)}
     }catch(err){
       const msg=err?.message?.includes("timeout")?"Scan timed out. Try a closer, well-lit photo.":"Scan failed. Try again with better lighting and angle.";
@@ -1092,9 +1181,10 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       {scanPreview&&<img src={scanPreview} alt="scan" style={{maxWidth:"70%",maxHeight:"40vh",borderRadius:12,border:`2px solid ${T.gold}`}}/>}
       <div style={{fontSize:15,color:T.gold,fontWeight:600,fontFamily:F.body}}>{scanStatus}</div>
       <div style={{width:120,height:3,borderRadius:2,background:T.cardBorder,overflow:"hidden"}}><div style={{width:"70%",height:"100%",background:T.gold,borderRadius:2,animation:"pulse 1s ease-in-out infinite alternate"}}/></div>
-      <div style={{display:"flex",gap:10,marginTop:8}}>
+      <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap",justifyContent:"center"}}>
         <button onClick={()=>fileRef.current?.click()} style={{padding:"10px 20px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Retry</button>
-        <button onClick={()=>{scanAbort.current=true;setScanning(false);setScanPreview(null)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Cancel</button>
+        <button onClick={()=>{setBatchMode(!batchMode);setScanCount(0)}} style={{padding:"10px 16px",borderRadius:4,border:`1.5px solid ${batchMode?T.green:T.cardBorder}`,background:batchMode?`${T.green}15`:"transparent",color:batchMode?T.green:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>{batchMode?`Batch ON (${scanCount})`:"Batch Mode"}</button>
+        <button onClick={()=>{scanAbort.current=true;setScanning(false);setScanPreview(null);setBatchMode(false);setScanCount(0)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Done</button>
       </div>
     </div>}
 
@@ -1902,8 +1992,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         </div>
       </div>)}
     </div>
-    :items.map((c,i)=><div key={c.id} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture,border:`1px solid ${selected.has(c.id)?T.gold:"transparent"}`}}>
-      <img src={getImg(c,"small")} alt={c.name} style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
+    :<VirtualList items={items} rowHeight={72} renderItem={(c,i)=><div key={c.id} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture,border:`1px solid ${selected.has(c.id)?T.gold:"transparent"}`,height:68,boxSizing:"border-box"}}>
+      <img src={getImg(c,"small")} alt={c.name} loading="lazy" style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
         <div style={{display:"flex",gap:4,alignItems:"center",marginTop:2,flexWrap:"wrap"}}><Cost c={c.mana_cost} sz={12}/><span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{c.set_name}</span>
@@ -1918,7 +2008,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         <button onClick={e=>{e.stopPropagation();adj(c.id,1)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#0F1E15",color:T.green,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
         <span style={{fontSize:12,color:T.green,minWidth:48,textAlign:"right",fontWeight:600,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
       </div>
-    </div>)}
+    </div>}/>}
 
     {slideIdx>=0&&items[slideIdx]&&<CardSlider cards={items} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={card=>{const cc=coll.find(c=>c.id===card.id);return<div>
