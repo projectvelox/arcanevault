@@ -966,6 +966,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [editing,setEditing]=useState(false);const [editName,setEditName]=useState("");
   const [mullPhase,setMullPhase]=useState(null);
   const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
+  const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
@@ -1018,6 +1019,22 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
   const handleExport=(fmt="text")=>{const text=exportDeckList(deck,fmt);navigator.clipboard.writeText(text).then(()=>toast(`Decklist copied (${fmt==="arena"?"Arena":"text"} format)`)).catch(()=>window.prompt("Copy:",text))};
+
+  const fetchSuggestions=async()=>{
+    if(sugLoading)return;setSugLoading(true);
+    const colors=getDeckColors(deck);
+    const ci=colors.length?`id<=${colors.join("").toLowerCase()}`:"";
+    const fmt=deck.format!=="commander"?`f:${deck.format}`:"";
+    const owned=new Set(deck.cards.map(c=>c.name.toLowerCase()));
+    const types=["creature","instant","sorcery","enchantment","artifact"];
+    const picked=types[Math.floor(Math.random()*types.length)];
+    try{
+      const q=[ci,fmt,`t:${picked}`].filter(Boolean).join(" ");
+      const res=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(q)}&order=edhrec&unique=cards`);
+      if(res.ok){const json=await res.json();setSuggestions((json.data||[]).filter(c=>!owned.has(c.name.toLowerCase())).slice(0,8))}
+    }catch{}
+    setSugLoading(false);setShowSuggest(true);
+  };
 
   const mx=Math.max(...Object.values(stats?.curve||{0:1}),1);
   const totalClrs=Object.values(stats?.clrs||{}).reduce((a,b)=>a+b,0)||1;
@@ -1078,7 +1095,26 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Import</button>
       <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
       <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
+      <button onClick={fetchSuggestions} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:showSuggest?`${T.purple}15`:"transparent",color:T.purple,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{sugLoading?"...":"Suggest"}</button>
     </div>
+
+    {/* Card suggestions */}
+    {showSuggest&&suggestions.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.purple}33`,padding:10,marginBottom:12,boxShadow:S.cardFrame}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:12,fontWeight:700,color:T.purple,fontFamily:F.heading}}>Suggested Cards</div>
+        <div style={{display:"flex",gap:4}}>
+          <button onClick={fetchSuggestions} style={{fontSize:10,color:T.textMuted,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline"}}>Refresh</button>
+          <button onClick={()=>setShowSuggest(false)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}>{I.close(T.textDim)}</button>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6}}>
+        {suggestions.map(c=><div key={c.id} style={{flexShrink:0,width:90,textAlign:"center"}}>
+          <img src={getImg(c,"small")} alt={c.name} style={{width:90,borderRadius:4,display:"block",cursor:"pointer"}} onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}}/>
+          <div style={{fontSize:9,color:T.text,marginTop:3,lineHeight:1.2,fontFamily:F.body,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+          <div style={{fontSize:8,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</div>
+        </div>)}
+      </div>
+    </div>}
 
     {/* Deck notes */}
     <div style={{marginBottom:10}}>
