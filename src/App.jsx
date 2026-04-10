@@ -237,9 +237,43 @@ const typeCategory = (typeLine) => {
 };
 const TYPE_ORDER = ["Creatures","Planeswalkers","Instants","Sorceries","Enchantments","Artifacts","Lands","Other"];
 
+// IndexedDB store with localStorage migration
 const store = {
-  async get(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}},
-  async set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}},
+  db: null,
+  async init() {
+    if (this.db) return;
+    return new Promise((resolve) => {
+      const req = indexedDB.open("arcane-vault", 1);
+      req.onupgradeneeded = (e) => { const db = e.target.result; if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv"); };
+      req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+      req.onerror = () => resolve(); // fallback gracefully
+    });
+  },
+  async get(k) {
+    await this.init();
+    if (!this.db) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
+    return new Promise((resolve) => {
+      const tx = this.db.transaction("kv", "readonly");
+      const req = tx.objectStore("kv").get(k);
+      req.onsuccess = () => {
+        if (req.result !== undefined) { resolve(req.result); return; }
+        // Migrate from localStorage on first access
+        try { const v = JSON.parse(localStorage.getItem(k)); if (v) { this.set(k, v); localStorage.removeItem(k); } resolve(v); }
+        catch { resolve(null); }
+      };
+      req.onerror = () => resolve(null);
+    });
+  },
+  async set(k, v) {
+    await this.init();
+    if (!this.db) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} return; }
+    return new Promise((resolve) => {
+      const tx = this.db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put(v, k);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  }
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -451,19 +485,43 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN APP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Card conditions & metadata options
+const CONDITIONS = ["NM","LP","MP","HP","DMG"];
+const LANGUAGES = ["en","ja","de","fr","it","es","pt","ko","zhs","zht","ru"];
+const LANG_LABELS = {en:"English",ja:"Japanese",de:"German",fr:"French",it:"Italian",es:"Spanish",pt:"Portuguese",ko:"Korean",zhs:"S. Chinese",zht:"T. Chinese",ru:"Russian"};
+
 export default function App() {
   const [tab,setTab]=useState("search");
-  const [decks,setDecks]=useState([]);const [coll,setColl]=useState([]);const [ready,setReady]=useState(false);
+  const [decks,setDecks]=useState([]);
+  const [binders,setBinders]=useState([{id:"main",name:"Collection",cards:[]},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}]);
+  const [activeBinder,setActiveBinder]=useState("main");
+  const [ready,setReady]=useState(false);
   const {toasts,show:toast}=useToast();
 
-  useEffect(()=>{(async()=>{const d=await store.get("av-decks"),c=await store.get("av-coll");if(d)setDecks(d);if(c)setColl(c);setReady(true)})()},[]);
+  // Load data (migrate flat coll to binders if needed)
+  useEffect(()=>{(async()=>{
+    const d=await store.get("av-decks");if(d)setDecks(d);
+    const b=await store.get("av-binders");
+    if(b){setBinders(b)}
+    else{const oldColl=await store.get("av-coll");if(oldColl&&oldColl.length){setBinders([{id:"main",name:"Collection",cards:oldColl},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}])}}
+    setReady(true);
+  })()},[]);
   useEffect(()=>{if(ready)store.set("av-decks",decks)},[decks,ready]);
-  useEffect(()=>{if(ready)store.set("av-coll",coll)},[coll,ready]);
+  useEffect(()=>{if(ready)store.set("av-binders",binders)},[binders,ready]);
 
-  const addColl=useCallback((card)=>{
-    setColl(p=>{const ex=p.find(c=>c.id===card.id);if(ex)return p.map(c=>c===ex?{...c,qty:c.qty+1}:c);return[...p,{...card,qty:1,addedAt:Date.now()}]});
-    toast(`Added ${card.name} to collection`);
-  },[toast]);
+  // Derived: flat collection of all cards across binders (for "you own" badges)
+  const allCollCards=useMemo(()=>{const m=new Map();binders.forEach(b=>b.cards.forEach(c=>{const ex=m.get(c.id);if(ex)m.set(c.id,{...ex,qty:ex.qty+c.qty});else m.set(c.id,{...c})}));return m},[binders]);
+
+  const addColl=useCallback((card,meta={})=>{
+    setBinders(p=>p.map(b=>{
+      if(b.id!==activeBinder)return b;
+      const ex=b.cards.find(c=>c.id===card.id&&(c.condition||"NM")===(meta.condition||"NM")&&(c.foil||false)===(meta.foil||false));
+      if(ex)return{...b,cards:b.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};
+      return{...b,cards:[...b.cards,{...card,qty:1,addedAt:Date.now(),condition:meta.condition||"NM",foil:meta.foil||false,language:meta.language||"en",...meta}]};
+    }));
+    const binderName=binders.find(b=>b.id===activeBinder)?.name||"collection";
+    toast(`Added ${card.name} to ${binderName}`);
+  },[activeBinder,binders,toast]);
   const addDeck=useCallback((did,card,board="main")=>{
     setDecks(p=>p.map(d=>{if(d.id!==did)return d;const ex=d.cards.find(c=>c.id===card.id&&c.board===board);if(ex)return{...d,cards:d.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
   },[]);
@@ -485,8 +543,8 @@ export default function App() {
     </div>
 
     <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
-      {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast}/>}
-      {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} coll={coll} setColl={setColl} toast={toast}/>}
+      {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast} allCollCards={allCollCards}/>}
+      {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards}/>}
       {tab==="trade"&&<TradeView toast={toast}/>}
     </div>
 
@@ -625,9 +683,12 @@ function SearchView({addColl,addDeck,decks,toast}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // VAULT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function VaultView({decks,setDecks,addDeck,coll,setColl,toast}) {
+function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setActiveBinder,toast,allCollCards}) {
   const [subTab,setSubTab]=useState("decks");const [activeDeck,setActiveDeck]=useState(null);
-  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll}/>;
+  const coll=useMemo(()=>(binders.find(b=>b.id===activeBinder)?.cards||[]),[binders,activeBinder]);
+  const setColl=useCallback((fn)=>setBinders(p=>p.map(b=>b.id===activeBinder?{...b,cards:typeof fn==="function"?fn(b.cards):fn}:b)),[activeBinder,setBinders]);
+
+  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll} allCollCards={allCollCards}/>;
   return <div style={{padding:16}}>
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
       {[["decks","Decks",I.deck],["binder","Collection",I.binder]].map(([id,label,icon])=>
@@ -635,7 +696,7 @@ function VaultView({decks,setDecks,addDeck,coll,setColl,toast}) {
       )}
     </div>
     {subTab==="decks"&&<DecksList decks={decks} setDecks={setDecks} onOpen={setActiveDeck} toast={toast}/>}
-    {subTab==="binder"&&<BinderView coll={coll} setColl={setColl} toast={toast}/>}
+    {subTab==="binder"&&<BinderView coll={coll} setColl={setColl} toast={toast} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder}/>}
   </div>;
 }
 
@@ -726,7 +787,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DECK EDITOR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll}) {
+function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCards}) {
   const [addQ,setAddQ]=useState("");const [addColors,setAddColors]=useState([]);const [addType,setAddType]=useState("");
   const [addResults,setAddResults]=useState([]);const [viewMode,setViewMode]=useState("visual");
   const [showSim,setShowSim]=useState(false);const [showImport,setShowImport]=useState(false);
@@ -889,7 +950,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll}) {
       </div>
     </div>
     {addResults.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,marginBottom:12,overflow:"hidden",boxShadow:S.cardFrame}}>
-      {addResults.map(c=>{const owned=coll?.find(x=>x.id===c.id);return<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.cardBorder}`}}>
+      {addResults.map(c=>{const owned=allCollCards?.get(c.id);return<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.cardBorder}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
           <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/>{owned&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#0F2A1A",color:T.green,fontWeight:600}}>Own {owned.qty}</span>}</div><Cost c={c.mana_cost} sz={12}/></div>
@@ -977,13 +1038,18 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ARCANUM (binder)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function BinderView({coll,setColl,toast}) {
+function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiveBinder}) {
   const [filter,setFilter]=useState("");const [sort,setSort]=useState("name");const [view,setView]=useState("list");
   const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");
   const [slideIdx,setSlideIdx]=useState(-1);const [showFilters,setShowFilters]=useState(false);
+  const [showNewBinder,setShowNewBinder]=useState(false);const [newBinderName,setNewBinderName]=useState("");
 
-  const totalVal=coll.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)*c.qty),0);
+  const currentBinder=binders.find(b=>b.id===activeBinder)||binders[0];
+  const totalVal=coll.reduce((a,c)=>a+(parseFloat(c.foil?c.prices?.usd_foil:c.prices?.usd||0)*c.qty),0);
   const totalCards=coll.reduce((a,c)=>a+c.qty,0);
+
+  const createBinder=()=>{if(!newBinderName.trim())return;const id=Date.now().toString();setBinders(p=>[...p,{id,name:newBinderName.trim(),cards:[]}]);setActiveBinder(id);setNewBinderName("");setShowNewBinder(false);toast(`Created "${newBinderName.trim()}"`)};
+  const deleteBinder=(id)=>{if(id==="main")return;setBinders(p=>p.filter(b=>b.id!==id));if(activeBinder===id)setActiveBinder("main");toast("Binder deleted","error")};
 
   const items=useMemo(()=>{
     let r=[...coll];
@@ -999,9 +1065,20 @@ function BinderView({coll,setColl,toast}) {
   const hasFilters=fColors.length||fType||fRarity;
 
   return <>
+    {/* Binder selector */}
+    <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:4}}>
+      {binders.map(b=><button key={b.id} onClick={()=>setActiveBinder(b.id)} style={{padding:"6px 12px",borderRadius:4,border:activeBinder===b.id?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`,background:activeBinder===b.id?T.goldGlow:T.card,color:activeBinder===b.id?T.gold:T.textDim,fontSize:11,fontWeight:activeBinder===b.id?700:500,cursor:"pointer",fontFamily:F.body,flexShrink:0,whiteSpace:"nowrap"}}>{b.type==="wishlist"?"\u2661 ":""}{b.name} ({b.cards.reduce((a,c)=>a+c.qty,0)})</button>)}
+      <button onClick={()=>setShowNewBinder(!showNewBinder)} style={{padding:"6px 10px",borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>+ New</button>
+    </div>
+    {showNewBinder&&<div style={{display:"flex",gap:6,marginBottom:10}}>
+      <input value={newBinderName} onChange={e=>setNewBinderName(e.target.value)} placeholder="Binder name..." onKeyDown={e=>e.key==="Enter"&&createBinder()} style={{flex:1,padding:"8px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body,boxShadow:S.insetInput}}/>
+      <button onClick={createBinder} style={{padding:"8px 14px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Create</button>
+    </div>}
+
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>My Collection</h2>
+      <h2 style={{margin:0,fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{currentBinder.name}</h2>
       <div style={{display:"flex",gap:4}}>
+        {activeBinder!=="main"&&activeBinder!=="wishlist"&&<button onClick={()=>deleteBinder(activeBinder)} style={{width:32,height:32,borderRadius:4,border:"none",background:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{I.trash(T.red)}</button>}
         <button onClick={()=>setShowFilters(!showFilters)} style={{width:32,height:32,borderRadius:4,border:"none",background:showFilters||hasFilters?T.goldGlow:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>{I.search(showFilters||hasFilters?T.gold:T.textDim)}{hasFilters&&<div style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:3,background:T.gold}}/>}</button>
         <button onClick={()=>setView("grid")} style={{width:32,height:32,borderRadius:4,border:"none",background:view==="grid"?T.goldGlow:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{I.grid(view==="grid"?T.gold:T.textDim)}</button>
         <button onClick={()=>setView("list")} style={{width:32,height:32,borderRadius:4,border:"none",background:view==="list"?T.goldGlow:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{I.list(view==="list"?T.gold:T.textDim)}</button>
@@ -1053,7 +1130,11 @@ function BinderView({coll,setColl,toast}) {
       <img src={getImg(c,"small")} alt={c.name} style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
-        <div style={{display:"flex",gap:4,alignItems:"center",marginTop:2}}><Cost c={c.mana_cost} sz={12}/><span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{c.set_name}</span></div>
+        <div style={{display:"flex",gap:4,alignItems:"center",marginTop:2,flexWrap:"wrap"}}><Cost c={c.mana_cost} sz={12}/><span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{c.set_name}</span>
+          {c.condition&&c.condition!=="NM"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:c.condition==="LP"?"#2A2A0F":c.condition==="MP"?"#2A1A0F":"#2A0F0F",color:c.condition==="LP"?"#E8C349":c.condition==="MP"?"#F09030":T.red,fontWeight:700}}>{c.condition}</span>}
+          {c.foil&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"#1A0F2A",color:T.purple,fontWeight:700}}>FOIL</span>}
+          {c.language&&c.language!=="en"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:T.cardInner,color:T.textDim}}>{c.language.toUpperCase()}</span>}
+        </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
         <button onClick={e=>{e.stopPropagation();adj(c.id,-1)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
