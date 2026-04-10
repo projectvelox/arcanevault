@@ -46,6 +46,24 @@ async function searchCards(query, colors = [], type = "") {
   } catch { return []; }
 }
 
+async function fetchAutocomplete(query) {
+  if (query.length < 2) return [];
+  try {
+    const res = await fetch(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return [];
+    return (await res.json()).data || [];
+  } catch { return []; }
+}
+
+async function fetchRulings(rulingsUri) {
+  if (!rulingsUri) return [];
+  try {
+    const res = await fetch(rulingsUri);
+    if (!res.ok) return [];
+    return (await res.json()).data || [];
+  } catch { return []; }
+}
+
 async function fetchPrintings(cardName) {
   try {
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`!"${cardName}"`)}&unique=prints&order=released`);
@@ -356,8 +374,10 @@ function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.
 function CardSlider({cards,index,onIndexChange,onClose,actions}) {
   const [dragX,setDragX]=useState(0);const [dragging,setDragging]=useState(false);
   const [printings,setPrintings]=useState([]);const [showPrintings,setShowPrintings]=useState(false);
+  const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
   const startX=useRef(0);const card=cards[index]; if(!card) return null;
-  const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true)};
+  const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
+  const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
   const onTS=e=>{startX.current=e.touches[0].clientX;setDragging(true);setDragX(0)};
   const onTM=e=>{if(dragging)setDragX(e.touches[0].clientX-startX.current)};
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
@@ -394,9 +414,14 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
             <span key={l} style={{fontSize:12,color:c,fontWeight:700,fontFamily:F.body}}>{l}: {fmt(v)}</span>
           )}
         </div>
-        <button onClick={loadPrintings} style={{marginTop:8,padding:"6px 16px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showPrintings?T.goldGlow:"transparent",color:T.gold,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
-          {showPrintings?"Hide Printings":"View All Printings"}
-        </button>
+        <div style={{display:"flex",gap:6,marginTop:8,justifyContent:"center"}}>
+          <button onClick={loadPrintings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showPrintings?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
+            {showPrintings?"Hide":"Printings"}
+          </button>
+          {card.rulings_uri&&<button onClick={loadRulings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showRulings?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
+            {showRulings?"Hide":"Rulings"}
+          </button>}
+        </div>
         {showPrintings&&printings.length>0&&<div style={{marginTop:8,maxHeight:160,overflowY:"auto",background:T.cardInner,borderRadius:10,padding:6}}>
           {printings.map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",borderRadius:6,marginBottom:2,background:p.id===card.id?T.goldGlow:"transparent"}}>
             <img src={getImg(p,"small")} alt={p.set_name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
@@ -404,6 +429,13 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
             <span style={{fontSize:11,color:T.green,fontWeight:600,flexShrink:0}}>{fmt(p.prices?.usd)}</span>
           </div>)}
         </div>}
+        {showRulings&&rulings.length>0&&<div style={{marginTop:8,maxHeight:180,overflowY:"auto",background:T.cardInner,borderRadius:10,padding:8}}>
+          {rulings.map((r,i)=><div key={i} style={{padding:"6px 0",borderBottom:i<rulings.length-1?`1px solid ${T.cardBorder}`:"none"}}>
+            <div style={{fontSize:11,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{r.comment}</div>
+            <div style={{fontSize:9,color:T.textDim,marginTop:2,fontFamily:F.body}}>{r.source} \u2022 {r.published_at}</div>
+          </div>)}
+        </div>}
+        {showRulings&&rulings.length===0&&<div style={{marginTop:8,fontSize:11,color:T.textDim,fontFamily:F.body,textAlign:"center"}}>No rulings available</div>}
         {card.legalities&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:8,justifyContent:"center"}}>
           {Object.entries(card.legalities).filter(([,v])=>v==="legal"||v==="banned"||v==="restricted").map(([f,v])=>
             <span key={f} style={{padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:600,textTransform:"uppercase",background:v==="legal"?"#0F2A1A":v==="banned"?"#2A0F0F":"#1A1A2A",color:v==="legal"?T.green:v==="banned"?T.red:"#E8C349"}}>{f}</span>
@@ -478,10 +510,14 @@ function SearchView({addColl,addDeck,decks,toast}) {
   const [results,setResults]=useState([]);const [total,setTotal]=useState(0);const [loading,setLoading]=useState(false);
   const [slideIdx,setSlideIdx]=useState(-1);const [showAdd,setShowAdd]=useState(false);
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
-  const [cotd,setCotd]=useState(null); // Card of the Day
+  const [cotd,setCotd]=useState(null);
+  const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const fileRef=useRef();
 
   useEffect(()=>{fetchSets().then(setSets);fetchRandomCard().then(setCotd)},[]);
+  // Autocomplete
+  const dQAc=useDebounce(q,200);
+  useEffect(()=>{if(dQAc.length>=2&&acFocused)fetchAutocomplete(dQAc).then(setAutocomplete);else setAutocomplete([])},[dQAc,acFocused]);
   const dQ=useDebounce(q,350),dC=useDebounce(colors,350),dT=useDebounce(type,350),dS=useDebounce(set,350);
 
   useEffect(()=>{
@@ -515,8 +551,11 @@ function SearchView({addColl,addDeck,decks,toast}) {
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
       <div style={{display:"flex",gap:8}}>
         <div style={{position:"relative",flex:1}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Name a spell..." style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell..." style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
           <span style={{position:"absolute",left:14,top:14,opacity:.4}}>{I.search(T.textDim)}</span>
+          {autocomplete.length>0&&acFocused&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:T.surface,border:`1px solid ${T.cardBorder}`,borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,.5)",maxHeight:200,overflowY:"auto"}}>
+            {autocomplete.slice(0,8).map(name=><div key={name} onMouseDown={()=>{setQ(name);setAutocomplete([])}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.text,fontFamily:F.body,borderBottom:`1px solid ${T.cardBorder}`}}>{name}</div>)}
+          </div>}
         </div>
         <button onClick={()=>fileRef.current?.click()} style={{width:52,height:52,borderRadius:14,border:`2px solid ${T.gold}`,background:T.cardInner,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:S.goldGlow}} title="Divine a card">{I.camera(T.gold)}</button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
@@ -525,6 +564,7 @@ function SearchView({addColl,addDeck,decks,toast}) {
         <ColorPills colors={colors} setColors={setColors}/>
         <TypeSelect type={type} setType={setType}/>
         <select value={set} onChange={e=>setSet(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
+        {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("")}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
       </div>
       <div style={{fontSize:12,color:T.textDim,marginTop:4,fontFamily:F.body}}>
         {loading?loadPhrase():hasQuery?`${total.toLocaleString()} cards found (showing ${results.length})`:""}
@@ -587,7 +627,7 @@ function SearchView({addColl,addDeck,decks,toast}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function VaultView({decks,setDecks,addDeck,coll,setColl,toast}) {
   const [subTab,setSubTab]=useState("decks");const [activeDeck,setActiveDeck]=useState(null);
-  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast}/>;
+  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll}/>;
   return <div style={{padding:16}}>
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
       {[["decks","Decks",I.deck],["binder","Collection",I.binder]].map(([id,label,icon])=>
@@ -610,6 +650,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 
   const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);toast(`Created "${name}"`)};
   const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk)toast(`Deleted "${dk.name}"`,"error")};
+  const cloneDeck=(d)=>{const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:[...d.cards],ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`)};
 
   return <>
     <ConfirmDialog open={!!deleteTarget} title="Delete this deck?" message="This will permanently remove the deck and all its cards. This cannot be undone." onConfirm={confirmDelete} onCancel={()=>setDeleteTarget(null)}/>
@@ -667,7 +708,10 @@ function DecksList({decks,setDecks,onOpen,toast}) {
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:15,fontWeight:700,color:T.green,fontFamily:F.body}}>{fmt(v.toFixed(2))}</div>
-            <button onClick={e=>{e.stopPropagation();setDeleteTarget(d.id)}} style={{marginTop:4,padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontFamily:F.body}}>{I.trash(T.red)} Delete</button>
+            <div style={{display:"flex",gap:4,marginTop:4}}>
+              <button onClick={e=>{e.stopPropagation();cloneDeck(d)}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:10,cursor:"pointer",fontFamily:F.body}}>Clone</button>
+              <button onClick={e=>{e.stopPropagation();setDeleteTarget(d.id)}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontFamily:F.body}}>{I.trash(T.red)}</button>
+            </div>
           </div>
         </div>
         {preview.length>0&&<div style={{display:"flex",gap:6,marginTop:10,overflow:"hidden",position:"relative",zIndex:1}}>
@@ -682,7 +726,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DECK EDITOR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
+function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll}) {
   const [addQ,setAddQ]=useState("");const [addColors,setAddColors]=useState([]);const [addType,setAddType]=useState("");
   const [addResults,setAddResults]=useState([]);const [viewMode,setViewMode]=useState("visual");
   const [showSim,setShowSim]=useState(false);const [showImport,setShowImport]=useState(false);
@@ -690,6 +734,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
   const [statsOpen,setStatsOpen]=useState(true);const [slideIdx,setSlideIdx]=useState(-1);
   const [hand,setHand]=useState([]);const [lib,setLib]=useState([]);const [mulls,setMulls]=useState(0);
   const [drawn,setDrawn]=useState([]);const [turn,setTurn]=useState(0);
+  const [editing,setEditing]=useState(false);const [editName,setEditName]=useState("");
+  const [mullPhase,setMullPhase]=useState(null); // null or array of cards to put back
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
@@ -698,6 +744,19 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
   const tint=getDeckTint(deck);
 
   const rmCard=(cid,board)=>setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const c=d.cards.find(x=>x.id===cid&&x.board===board);if(!c)return d;return c.qty>1?{...d,cards:d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)}:{...d,cards:d.cards.filter(x=>x!==c)}}));
+
+  const moveCard=(cid,fromBoard,toBoard)=>setDecks(p=>p.map(d=>{
+    if(d.id!==deckId)return d;
+    const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
+    const existing=d.cards.find(x=>x.id===cid&&x.board===toBoard);
+    let cards=d.cards.filter(x=>x!==c);
+    if(c.qty>1) cards=[...d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)];
+    if(existing) cards=cards.map(x=>x===existing?{...x,qty:x.qty+1}:x);
+    else cards=[...cards,{...c,qty:1,board:toBoard}];
+    return{...d,cards};
+  }));
+
+  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`);};
 
   const stats=useMemo(()=>{
     const main=deck.cards.filter(c=>c.board==="main"||c.board==="commander");
@@ -714,9 +773,11 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
 
   const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
   const buildLib=()=>{const c=[];deck.cards.filter(x=>x.board==="main"||x.board==="commander").forEach(x=>{for(let i=0;i<x.qty;i++)c.push({...x,uid:x.id+"-"+i+"-"+Math.random()})});return shuffle(c)};
-  const newGame=()=>{const l=buildLib();setHand(l.slice(0,7));setLib(l.slice(7));setMulls(0);setDrawn([]);setTurn(1);setShowSim(true)};
-  const mull=()=>{const l=buildLib();setHand(l.slice(0,7));setLib(l.slice(7));setMulls(m=>m+1);setDrawn([]);setTurn(1)};
-  const drawCard=()=>{if(!lib.length)return;setDrawn(p=>[...p,lib[0]]);setLib(p=>p.slice(1));setTurn(t=>t+1)};
+  const newGame=()=>{const l=buildLib();setHand(l.slice(0,7));setLib(l.slice(7));setMulls(0);setDrawn([]);setTurn(1);setShowSim(true);setMullPhase(null)};
+  // London mulligan: draw 7, then put N cards on bottom (N = mulligan count)
+  const mull=()=>{const l=buildLib();const newMulls=mulls+1;setHand(l.slice(0,7));setLib(l.slice(7));setMulls(newMulls);setDrawn([]);setTurn(1);setMullPhase(newMulls>0?newMulls:null)};
+  const putBack=(uid)=>{if(!mullPhase)return;setHand(h=>h.filter(c=>c.uid!==uid));setLib(l=>[...l,hand.find(c=>c.uid===uid)]);setMullPhase(p=>p-1<=0?null:p-1)};
+  const drawCard=()=>{if(!lib.length||mullPhase)return;setDrawn(p=>[...p,lib[0]]);setLib(p=>p.slice(1));setTurn(t=>t+1)};
 
   const handleImport=async()=>{
     const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No valid entries found");return;}
@@ -739,7 +800,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
       <ArtBg src={deck.cards[0]?getImg(deck.cards[0]):null} opacity={.15} blur={24}/>
       <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
-          <h2 style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{deck.name}</h2>
+          {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+          :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
           <div style={{display:"flex",gap:8,fontSize:12,color:T.textDim,fontFamily:F.body,flexWrap:"wrap",alignItems:"center"}}>
             <span>{deck.format[0].toUpperCase()+deck.format.slice(1)}</span>
             <span>{stats.mainN} main{stats.sideN>0?` / ${stats.sideN} side`:""}</span>
@@ -796,10 +858,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
       </div>
     </div>}
 
-    {/* Playtest (simulator) */}
+    {/* Playtest with London mulligan */}
     {showSim&&hand.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.gold}33`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Playtest</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Playtest{mullPhase?` \u2014 put ${mullPhase} card${mullPhase>1?"s":""} back`:""}</div>
         <button onClick={()=>setShowSim(false)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.close(T.textDim)}</button>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -808,9 +870,9 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
         <button onClick={newGame} style={{padding:"8px 12px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Reset</button>
       </div>
       <div style={{display:"flex",gap:8,fontSize:11,color:T.textDim,marginBottom:8,fontFamily:F.body}}><span>Library: {lib.length}</span><span>Hand: {hand.length}</span><span>Turn {turn}</span></div>
-      <div style={{fontSize:10,color:T.gold,fontWeight:600,marginBottom:4,fontFamily:F.body}}>Opening Hand</div>
+      <div style={{fontSize:10,color:T.gold,fontWeight:600,marginBottom:4,fontFamily:F.body}}>{mullPhase?"Tap cards to put on bottom:":"Opening Hand"}</div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,WebkitOverflowScrolling:"touch"}}>
-        {hand.map(c=><div key={c.uid} style={{flexShrink:0,width:80}}><img src={getImg(c,"small")} alt={c.name} style={{width:80,borderRadius:4,display:"block"}}/><div style={{fontSize:9,color:T.text,marginTop:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div></div>)}
+        {hand.map(c=><div key={c.uid} onClick={()=>mullPhase&&putBack(c.uid)} style={{flexShrink:0,width:80,cursor:mullPhase?"pointer":"default",opacity:mullPhase?.9:1}}><img src={getImg(c,"small")} alt={c.name} style={{width:80,borderRadius:4,display:"block",border:mullPhase?`2px solid ${T.gold}44`:"2px solid transparent"}}/><div style={{fontSize:9,color:T.text,marginTop:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div></div>)}
       </div>
       {drawn.length>0&&<><div style={{fontSize:10,color:T.green,fontWeight:600,marginTop:6,marginBottom:4,fontFamily:F.body}}>Draws</div>
         <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
@@ -827,16 +889,17 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
       </div>
     </div>
     {addResults.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,marginBottom:12,overflow:"hidden",boxShadow:S.cardFrame}}>
-      {addResults.map(c=><div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.cardBorder}`}}>
+      {addResults.map(c=>{const owned=coll?.find(x=>x.id===c.id);return<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.cardBorder}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
-          <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/></div><Cost c={c.mana_cost} sz={12}/></div>
+          <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/>{owned&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#0F2A1A",color:T.green,fontWeight:600}}>Own {owned.qty}</span>}</div><Cost c={c.mana_cost} sz={12}/></div>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0}}>
-          <button onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}} style={{padding:"6px 12px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
-          <button onClick={()=>{addDeck(deckId,c,"sideboard");toast(`${c.name} to sideboard`)}} style={{padding:"6px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Side</button>
+          <button onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}} style={{padding:"6px 10px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
+          <button onClick={()=>{addDeck(deckId,c,"sideboard");toast(`${c.name} to sideboard`)}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Side</button>
+          {deck.format==="commander"&&<button onClick={()=>{addDeck(deckId,c,"commander");toast(`${c.name} as commander`)}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.gold}66`,background:T.goldGlow,color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Cmdr</button>}
         </div>
-      </div>)}
+      </div>})}
     </div>}
 
     {/* View toggle */}
@@ -899,9 +962,14 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
     </div>}
 
     {slideIdx>=0&&allCards[slideIdx]&&<CardSlider cards={allCards} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
-      actions={card=><div style={{display:"flex",gap:10}}>
-        <button onClick={()=>{rmCard(card.id,"main");rmCard(card.id,"commander");toast(`Cut ${card.name}`);setSlideIdx(-1)}} style={{flex:1,padding:14,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Cut</button>
-      </div>}
+      actions={card=>{const curBoard=card.board||"main";return<div>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          {curBoard!=="main"&&<button onClick={()=>{moveCard(card.id,curBoard,"main");toast(`Moved to main`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>To Main</button>}
+          {curBoard!=="sideboard"&&<button onClick={()=>{moveCard(card.id,curBoard,"sideboard");toast(`Moved to sideboard`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>To Side</button>}
+          {deck.format==="commander"&&curBoard!=="commander"&&<button onClick={()=>{moveCard(card.id,curBoard,"commander");toast(`Set as commander`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:T.goldGlow,color:T.gold,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Commander</button>}
+        </div>
+        <button onClick={()=>{rmCard(card.id,curBoard);toast(`Cut ${card.name}`);setSlideIdx(-1)}} style={{width:"100%",padding:12,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Cut from Deck</button>
+      </div>}}
     />}
   </div>;
 }
@@ -1015,22 +1083,27 @@ function TradeView({toast}) {
   const dQ=useDebounce(q,350);
   useEffect(()=>{let c=false;if(dQ.length<2){setResults([]);return;}searchCards(dQ).then(r=>{if(!c)setResults(r)});return()=>{c=true}},[dQ]);
 
-  const add=card=>{const e={...card,uid:Date.now()};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
-  const giveT=give.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)),0);
-  const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)),0);
+  const add=card=>{const e={...card,uid:Date.now(),qty:1};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
+  const adjTrade=(list,setList,uid,d)=>setList(p=>p.map(c=>{if(c.uid!==uid)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
+  const giveT=give.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
+  const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
   const diff=giveT-recvT;
   const clearAll=()=>{setGive([]);setRecv([]);toast("Trade cleared","info")};
 
-  const TradeSide=({title,cards,s,total,clr,onRm})=><div style={{flex:1}}>
+  const TradeSide=({title,cards,s,total,clr,onRm,onAdj})=><div style={{flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-      <span style={{fontSize:13,fontWeight:700,color:clr,fontFamily:F.heading}}>{title} ({cards.length})</span>
+      <span style={{fontSize:13,fontWeight:700,color:clr,fontFamily:F.heading}}>{title} ({cards.reduce((a,c)=>a+(c.qty||1),0)})</span>
       <span style={{fontSize:12,fontWeight:700,color:T.green,fontFamily:F.body}}>${total.toFixed(2)}</span>
     </div>
     <div style={{background:T.card,borderRadius:4,border:`1px solid ${clr}22`,minHeight:100,padding:6,boxShadow:S.cardFrame}}>
-      {cards.map(c=><div key={c.uid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",borderRadius:4,marginBottom:3,background:T.cardInner}}>
+      {cards.map(c=><div key={c.uid} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 6px",borderRadius:4,marginBottom:3,background:T.cardInner}}>
         <img src={getImg(c,"small")} alt={c.name} style={{width:24,height:34,borderRadius:3,objectFit:"cover",flexShrink:0}}/>
-        <div style={{flex:1,minWidth:0}}><div style={{fontSize:11,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:9,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span></div>
-        <button onClick={()=>onRm(c.uid)} style={{width:20,height:20,borderRadius:4,border:"none",background:"#2A1515",color:T.red,fontSize:10,cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2715"}</button>
+        <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:9,color:T.green,fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{fmt(c.prices?.usd)}</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
+          <button onClick={()=>onAdj(c.uid,-1)} style={{width:18,height:18,borderRadius:3,border:"none",background:"#1E1215",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+          <span style={{fontSize:10,fontWeight:700,minWidth:14,textAlign:"center",fontFamily:F.body}}>{c.qty||1}</span>
+          <button onClick={()=>onAdj(c.uid,1)} style={{width:18,height:18,borderRadius:3,border:"none",background:"#0F1E15",color:T.green,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        </div>
       </div>)}
       <button onClick={()=>{setSide(s);setQ("");setResults([])}} style={{width:"100%",padding:10,borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",marginTop:4,fontFamily:F.body}}>+ Add card</button>
     </div>
@@ -1055,8 +1128,8 @@ function TradeView({toast}) {
     </BottomSheet>
 
     <div style={{display:"flex",gap:8}}>
-      <TradeSide title="Giving" cards={give} s="give" total={giveT} clr={T.red} onRm={uid=>setGive(p=>p.filter(c=>c.uid!==uid))}/>
-      <TradeSide title="Receiving" cards={recv} s="recv" total={recvT} clr={T.green} onRm={uid=>setRecv(p=>p.filter(c=>c.uid!==uid))}/>
+      <TradeSide title="Giving" cards={give} s="give" total={giveT} clr={T.red} onRm={uid=>setGive(p=>p.filter(c=>c.uid!==uid))} onAdj={(uid,d)=>adjTrade(give,setGive,uid,d)}/>
+      <TradeSide title="Receiving" cards={recv} s="recv" total={recvT} clr={T.green} onRm={uid=>setRecv(p=>p.filter(c=>c.uid!==uid))} onAdj={(uid,d)=>adjTrade(recv,setRecv,uid,d)}/>
     </div>
 
     {(give.length>0||recv.length>0)&&<>
