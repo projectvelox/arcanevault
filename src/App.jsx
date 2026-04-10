@@ -279,6 +279,17 @@ const I = {
 };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// BLURRED ART BACKGROUND
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+function ArtBg({src,opacity=.18,blur=28,gradient=true}) {
+  if (!src || src === PLACEHOLDER_IMG) return null;
+  return <div style={{position:"absolute",inset:0,overflow:"hidden",borderRadius:"inherit",pointerEvents:"none",zIndex:0}}>
+    <img src={src} alt="" style={{position:"absolute",top:"-20%",left:"-20%",width:"140%",height:"140%",objectFit:"cover",filter:`blur(${blur}px) saturate(1.3)`,opacity,transform:"scale(1.1)"}}/>
+    {gradient&&<div style={{position:"absolute",inset:0,background:`linear-gradient(180deg, rgba(12,14,20,.4) 0%, ${T.bg} 100%)`}}/>}
+  </div>;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TOAST
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function useToast() {
@@ -352,7 +363,9 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
   const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;
 
-  return <div style={{position:"fixed",inset:0,zIndex:300,background:"rgba(0,0,0,.95)",display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+  return <div style={{position:"fixed",inset:0,zIndex:300,background:"#000",display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+    <ArtBg src={getImg(card)} opacity={.12} blur={40} gradient={false}/>
+    <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
       <button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:14,cursor:"pointer",padding:8,display:"flex",alignItems:"center",gap:6,fontFamily:F.body}}>{I.close(T.textMuted)} Close</button>
       <span style={{fontSize:12,color:T.textDim,fontFamily:F.body}}>{index+1} / {cards.length}</span>
@@ -399,6 +412,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
       </div>
     </div>
     {actions&&<div style={{padding:"12px 16px",flexShrink:0}}>{actions(card)}</div>}
+    </div>{/* close zIndex:1 wrapper */}
   </div>;
 }
 
@@ -539,8 +553,9 @@ function SearchView({addColl,addDeck,decks,toast}) {
     {!hasQuery&&!loading&&<div style={{textAlign:"center",padding:"32px 20px",color:T.textDim}}>
       <div style={{fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:1,marginBottom:4}}>The Blind Eternities Await</div>
       <div style={{fontSize:13,color:T.textMuted,fontFamily:F.body,marginBottom:20}}>Name a spell, choose your colors, or divine a card by sight</div>
-      {cotd&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame,padding:16,textAlign:"center",backgroundImage:S.texture}}>
-        <div style={{fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:10,fontFamily:F.heading}}>Card of the Day</div>
+      {cotd&&<div style={{position:"relative",overflow:"hidden",background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame,padding:16,textAlign:"center"}}>
+        <ArtBg src={getImg(cotd)} opacity={.12} blur={30}/>
+        <div style={{position:"relative",fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:10,fontFamily:F.heading}}>Card of the Day</div>
         <img src={getImg(cotd)} alt={cotd.name} style={{maxWidth:"65%",borderRadius:10,marginBottom:10}}/>
         <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{cotd.name}</div>
         {cotd.flavor_text&&<div style={{fontSize:13,color:T.textDim,fontStyle:"italic",marginTop:8,lineHeight:1.6,fontFamily:F.body,maxWidth:280,margin:"8px auto 0"}}>"{cotd.flavor_text}"</div>}
@@ -633,9 +648,11 @@ function DecksList({decks,setDecks,onOpen,toast}) {
       const rules=FORMAT_RULES[d.format]||FORMAT_RULES.standard;const sizeOk=rules.min?mainN>=rules.min:true;
       const tint=getDeckTint(d);
 
-      return <div key={d.id} onClick={()=>onOpen(d.id)} style={{background:`linear-gradient(135deg, ${tint} 0%, ${T.card} 100%)`,border:`1px solid ${T.cardBorder}`,borderRadius:4,padding:14,marginBottom:10,cursor:"pointer",boxShadow:S.cardFrame,backgroundImage:S.texture,borderLeft:deckColors.length?`3px solid ${MCLR[deckColors[0]]}`:`3px solid ${T.cardBorder}`}}
+      const heroArt = d.cards[0] ? getImg(d.cards[0]) : null;
+      return <div key={d.id} onClick={()=>onOpen(d.id)} style={{position:"relative",overflow:"hidden",background:`linear-gradient(135deg, ${tint} 0%, ${T.card} 100%)`,border:`1px solid ${T.cardBorder}`,borderRadius:4,padding:14,marginBottom:10,cursor:"pointer",boxShadow:S.cardFrame,borderLeft:deckColors.length?`3px solid ${MCLR[deckColors[0]]}`:`3px solid ${T.cardBorder}`}}
         onMouseEnter={e=>e.currentTarget.style.borderColor=T.gold+"66"} onMouseLeave={e=>e.currentTarget.style.borderColor=T.cardBorder}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <ArtBg src={heroArt} opacity={.1} blur={24}/>
+        <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
           <div style={{flex:1}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{fontSize:17,fontWeight:700,color:T.text,fontFamily:F.heading,letterSpacing:.3}}>{d.name}</span>
@@ -653,7 +670,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
             <button onClick={e=>{e.stopPropagation();setDeleteTarget(d.id)}} style={{marginTop:4,padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontFamily:F.body}}>{I.trash(T.red)} Delete</button>
           </div>
         </div>
-        {preview.length>0&&<div style={{display:"flex",gap:6,marginTop:10,overflow:"hidden"}}>
+        {preview.length>0&&<div style={{display:"flex",gap:6,marginTop:10,overflow:"hidden",position:"relative",zIndex:1}}>
           {preview.map(c=><img key={c.id} src={getImg(c,"small")} alt={c.name} style={{width:48,height:67,borderRadius:3,objectFit:"cover",border:`1px solid ${T.cardBorder}`}}/>)}
           {n>4&&<div style={{width:48,height:67,borderRadius:3,background:T.cardInner,border:`1px solid ${T.cardBorder}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,color:T.textDim}}>+{n-4}</div>}
         </div>}
@@ -717,9 +734,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
   return <div style={{padding:16}}>
     <button onClick={onBack} style={{padding:"8px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:13,cursor:"pointer",marginBottom:12,display:"flex",alignItems:"center",gap:6,fontFamily:F.body}}>{I.back(T.textDim)} Back</button>
 
-    {/* Deck header — mana-adaptive background */}
-    <div style={{background:`linear-gradient(135deg, ${tint} 0%, ${T.card} 100%)`,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:12,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+    {/* Deck header — blurred card art background */}
+    <div style={{position:"relative",overflow:"hidden",background:`linear-gradient(135deg, ${tint} 0%, ${T.card} 100%)`,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:12,boxShadow:S.cardFrame}}>
+      <ArtBg src={deck.cards[0]?getImg(deck.cards[0]):null} opacity={.15} blur={24}/>
+      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
           <h2 style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{deck.name}</h2>
           <div style={{display:"flex",gap:8,fontSize:12,color:T.textDim,fontFamily:F.body,flexWrap:"wrap",alignItems:"center"}}>
