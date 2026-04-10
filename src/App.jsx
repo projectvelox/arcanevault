@@ -118,12 +118,38 @@ async function fetchRandomCard() {
   } catch { return null; }
 }
 
-async function scanCardImage(file) {
+// OCR scanner with worker caching, timeout, and fuzzy correction
+let _ocrWorker = null;
+async function getOcrWorker() {
+  if (_ocrWorker) return _ocrWorker;
   const { createWorker } = await import("tesseract.js");
-  const worker = await createWorker("eng");
-  const { data: { text } } = await worker.recognize(file);
-  await worker.terminate();
-  return (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
+  _ocrWorker = await createWorker("eng");
+  return _ocrWorker;
+}
+
+async function scanCardImage(file) {
+  let worker = null;
+  try {
+    worker = await Promise.race([
+      getOcrWorker(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("OCR timeout")), 20000))
+    ]);
+    const { data: { text } } = await worker.recognize(file);
+    const rawLine = (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
+    if (!rawLine) return "";
+    // Clean: remove common OCR garbage (mana symbols, numbers at end)
+    const cleaned = rawLine.replace(/[{}\[\]|]/g, "").replace(/\d+$/,"").trim();
+    // Fuzzy correct via Scryfall autocomplete
+    try {
+      const suggestions = await fetchAutocomplete(cleaned);
+      if (suggestions.length > 0) return suggestions[0]; // Best match
+    } catch {}
+    return cleaned;
+  } catch (e) {
+    // On error, kill worker so next scan gets a fresh one
+    if (worker) { try { await worker.terminate(); } catch {} _ocrWorker = null; }
+    throw e;
+  }
 }
 
 function parseDeckList(text) {
@@ -941,11 +967,17 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
 
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];if(!file)return;
-    setScanPreview(URL.createObjectURL(file));setScanning(true);setScanStatus("Channeling divination...");
-    try{const name=await scanCardImage(file);
-      if(name){setQ(name);setScanStatus(`Divined: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null)},1200)}
-      else{setScanStatus("The vision is unclear...");setTimeout(()=>{setScanning(false);setScanPreview(null)},2000)}
-    }catch{setScanStatus("Divination failed.");setTimeout(()=>{setScanning(false);setScanPreview(null)},2000)}
+    const blobUrl=URL.createObjectURL(file);
+    setScanPreview(blobUrl);setScanning(true);setScanStatus("Loading OCR engine...");
+    try{
+      setScanStatus("Scanning card text...");
+      const name=await scanCardImage(file);
+      if(name){setQ(name);setScanStatus(`Found: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},1200)}
+      else{setScanStatus("Could not read card name. Try better lighting.");setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},2500)}
+    }catch(err){
+      const msg=err?.message?.includes("timeout")?"Scan timed out. Try a clearer photo.":"Scan failed. Try again with better lighting.";
+      setScanStatus(msg);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},2500);
+    }
     if(fileRef.current)fileRef.current.value="";
   };
 
