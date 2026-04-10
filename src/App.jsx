@@ -2102,127 +2102,68 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // Life counter + game tools
 function GameTools({toast}) {
-  const [p1,setP1]=useState(40);const [p2,setP2]=useState(40);
-  const [p1cmd,setP1cmd]=useState(0);const [p2cmd,setP2cmd]=useState(0);
-  const [p1poison,setP1poison]=useState(0);const [p2poison,setP2poison]=useState(0);
-  const [p1energy,setP1energy]=useState(0);const [p2energy,setP2energy]=useState(0);
-  const [p1xp,setP1xp]=useState(0);const [monarch,setMonarch]=useState(null);
-  const [showExtra,setShowExtra]=useState(false);
+  const [playerCount,setPlayerCount]=useState(2);
+  const [players,setPlayers]=useState([{name:"You",life:40,cmd:0,poison:0,energy:0},{name:"Opp",life:40,cmd:0,poison:0,energy:0}]);
+  const [monarch,setMonarch]=useState(null);const [showExtra,setShowExtra]=useState(false);
   const [format,setFormat]=useState("commander");
   const [coinResult,setCoinResult]=useState(null);const [diceResult,setDiceResult]=useState(null);
   const [stormCount,setStormCount]=useState(0);const [turnNum,setTurnNum]=useState(1);
   const [gameLog,setGameLog]=useState([]);
   const startLife={commander:40,standard:20,modern:20,pioneer:20,legacy:20,vintage:20,pauper:20};
 
-  const reset=()=>{const l=startLife[format]||20;setP1(l);setP2(l);setP1cmd(0);setP2cmd(0);setP1poison(0);setP2poison(0);setP1energy(0);setP2energy(0);setP1xp(0);setMonarch(null);setStormCount(0);setTurnNum(1);setGameLog([])};
+  const adjPlayer=(idx,field,delta)=>setPlayers(p=>p.map((pl,i)=>i===idx?{...pl,[field]:Math.max(field==="life"?-999:0,pl[field]+delta)}:pl));
+  const setPlayerCount2=(n)=>{const sl=startLife[format]||20;const names=["You","Opp 1","Opp 2","Opp 3"];setPlayers(Array.from({length:n},(_,i)=>({name:names[i]||`P${i+1}`,life:sl,cmd:0,poison:0,energy:0})));setPlayerCount(n);setMonarch(null)};
+
+  const reset=()=>{const l=startLife[format]||20;setPlayers(p=>p.map(pl=>({...pl,life:l,cmd:0,poison:0,energy:0})));setMonarch(null);setStormCount(0);setTurnNum(1);setGameLog([])};
   const flip=()=>{const r=Math.random()<.5?"Heads":"Tails";setCoinResult(r);toast(r);setTimeout(()=>setCoinResult(null),2000)};
   const roll=(sides=20)=>{const r=Math.floor(Math.random()*sides)+1;setDiceResult(r);toast(`Rolled ${r}`);setTimeout(()=>setDiceResult(null),2000)};
-
-  const LifeBtn=({val,set,label})=><div style={{flex:1,textAlign:"center"}}>
-    <div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginBottom:4}}>{label}</div>
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-      <button onClick={()=>set(v=>v-1)} style={{width:40,height:40,borderRadius:20,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:18,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F.body}}>{"\u2212"}</button>
-      <div style={{fontSize:36,fontWeight:900,color:val<=0?T.red:T.accent,fontFamily:F.heading,minWidth:50,textAlign:"center",textShadow:val<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{val}</div>
-      <button onClick={()=>set(v=>v+1)} style={{width:40,height:40,borderRadius:20,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:18,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F.body}}>+</button>
-    </div>
-  </div>;
 
   return <div style={{marginBottom:16}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Life Counter</div>
-      <div style={{display:"flex",gap:6}}>
-        <select value={format} onChange={e=>{setFormat(e.target.value);const l=startLife[e.target.value]||20;setP1(l);setP2(l)}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <div style={{display:"flex",gap:2}}>
+          {[2,3,4].map(n=><button key={n} onClick={()=>setPlayerCount2(n)} style={{width:24,height:24,borderRadius:4,border:`1px solid ${playerCount===n?T.gold:T.cardBorder}`,background:playerCount===n?T.goldGlow:"transparent",color:playerCount===n?T.gold:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{n}</button>)}
+        </div>
+        <select value={format} onChange={e=>{setFormat(e.target.value);const l=startLife[e.target.value]||20;setPlayers(p=>p.map(pl=>({...pl,life:l,cmd:0,poison:0,energy:0})))}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
           {Object.keys(startLife).map(f=><option key={f} value={f}>{f[0].toUpperCase()+f.slice(1)}</option>)}
         </select>
         <button onClick={reset} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>Reset</button>
       </div>
     </div>
-    <div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
-      <div style={{display:"flex",gap:8}}>
-        <LifeBtn val={p1} set={setP1} label="You"/>
-        <div style={{width:1,background:T.cardBorder}}/>
-        <LifeBtn val={p2} set={setP2} label="Opponent"/>
+    <div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
+      <div style={{display:"grid",gridTemplateColumns:playerCount<=2?"1fr 1fr":"1fr 1fr",gap:8}}>
+        {players.map((pl,idx)=><div key={idx} style={{textAlign:"center",padding:8,borderRadius:4,background:T.cardInner,border:monarch===idx?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`}}>
+          <div style={{fontSize:9,color:T.textDim,fontFamily:F.body,marginBottom:2}}>{pl.name}{monarch===idx?" \u{1F451}":""}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+            <button onClick={()=>adjPlayer(idx,"life",-1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <div style={{fontSize:playerCount<=2?32:24,fontWeight:900,color:pl.life<=0?T.red:T.accent,fontFamily:F.heading,minWidth:36,textShadow:pl.life<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{pl.life}</div>
+            <button onClick={()=>adjPlayer(idx,"life",1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          </div>
+          {format==="commander"&&<div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
+            <div style={{fontSize:8,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.cmd}</button></div>
+            <div style={{fontSize:8,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.poison}</button></div>
+          </div>}
+          <button onClick={()=>setMonarch(monarch===idx?null:idx)} style={{marginTop:2,background:"none",border:"none",color:monarch===idx?T.gold:T.textDim,fontSize:8,cursor:"pointer",fontFamily:F.body}}>{monarch===idx?"Monarch":"Set Monarch"}</button>
+        </div>)}
       </div>
-      {format==="commander"&&<div style={{display:"flex",gap:16,justifyContent:"center",marginTop:10}}>
-        <div style={{textAlign:"center"}}><div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Cmdr Dmg Taken</div>
-          <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center",marginTop:2}}>
-            <button onClick={()=>setP1cmd(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:16,fontWeight:700,color:p1cmd>=21?T.red:T.textMuted,fontFamily:F.heading,minWidth:24,textAlign:"center"}}>{p1cmd}</span>
-            <button onClick={()=>{setP1cmd(v=>v+1);setP1(v=>v-1)}} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-        </div>
-        <div style={{textAlign:"center"}}><div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Cmdr Dmg Dealt</div>
-          <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center",marginTop:2}}>
-            <button onClick={()=>setP2cmd(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:16,fontWeight:700,color:p2cmd>=21?T.green:T.textMuted,fontFamily:F.heading,minWidth:24,textAlign:"center"}}>{p2cmd}</span>
-            <button onClick={()=>setP2cmd(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-        </div>
-      </div>}
     </div>
-    {/* Extra counters: Poison, Energy, Experience, Monarch */}
+    {/* Extra counters per player */}
     <button onClick={()=>setShowExtra(!showExtra)} style={{width:"100%",marginTop:8,padding:"6px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:showExtra?T.goldGlow:"transparent",color:showExtra?T.gold:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>
-      {showExtra?"Hide":"Show"} Extra Counters {(p1poison||p2poison||p1energy||p2energy||p1xp||monarch)?"*":""}
+      {showExtra?"Hide":"Show"} Energy Counters
     </button>
     {showExtra&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginTop:6,boxShadow:S.cardFrame}}>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-        {/* Poison */}
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#9F5FBF",fontWeight:600,fontFamily:F.body}}>Your Poison</div>
+      <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(playerCount,2)},1fr)`,gap:8}}>
+        {players.map((pl,idx)=><div key={idx} style={{textAlign:"center"}}>
+          <div style={{fontSize:9,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>{pl.name} Energy</div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>setP1poison(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:20,fontWeight:800,color:p1poison>=10?T.red:"#9F5FBF",fontFamily:F.heading}}>{p1poison}</span>
-            <button onClick={()=>setP1poison(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #9F5FBF`,background:"transparent",color:"#9F5FBF",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+            <button onClick={()=>adjPlayer(idx,"energy",-1)} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <span style={{fontSize:20,fontWeight:800,color:"#E8C349",fontFamily:F.heading}}>{pl.energy}</span>
+            <button onClick={()=>adjPlayer(idx,"energy",1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #E8C349`,background:"transparent",color:"#E8C349",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
-          {p1poison>=10&&<div style={{fontSize:8,color:T.red,fontFamily:F.body}}>LETHAL</div>}
-        </div>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#9F5FBF",fontWeight:600,fontFamily:F.body}}>Opp Poison</div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>setP2poison(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:20,fontWeight:800,color:p2poison>=10?T.red:"#9F5FBF",fontFamily:F.heading}}>{p2poison}</span>
-            <button onClick={()=>setP2poison(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #9F5FBF`,background:"transparent",color:"#9F5FBF",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-          {p2poison>=10&&<div style={{fontSize:8,color:T.red,fontFamily:F.body}}>LETHAL</div>}
-        </div>
-        {/* Energy */}
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>Your Energy</div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>setP1energy(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:20,fontWeight:800,color:"#E8C349",fontFamily:F.heading}}>{p1energy}</span>
-            <button onClick={()=>setP1energy(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #E8C349`,background:"transparent",color:"#E8C349",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-        </div>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>Opp Energy</div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>setP2energy(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:20,fontWeight:800,color:"#E8C349",fontFamily:F.heading}}>{p2energy}</span>
-            <button onClick={()=>setP2energy(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #E8C349`,background:"transparent",color:"#E8C349",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-        </div>
-      </div>
-      {/* Experience + Monarch */}
-      <div style={{display:"flex",gap:12,marginTop:8,justifyContent:"center",alignItems:"center"}}>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:T.textMuted,fontFamily:F.body}}>Experience</div>
-          <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>setP1xp(v=>Math.max(0,v-1))} style={{width:20,height:20,borderRadius:10,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <span style={{fontSize:16,fontWeight:700,color:T.textMuted,fontFamily:F.heading}}>{p1xp}</span>
-            <button onClick={()=>setP1xp(v=>v+1)} style={{width:20,height:20,borderRadius:10,border:`1px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-          </div>
-        </div>
-        <button onClick={()=>setMonarch(monarch==="you"?null:"you")} style={{padding:"6px 12px",borderRadius:4,border:`1.5px solid ${monarch==="you"?T.gold:T.cardBorder}`,background:monarch==="you"?T.goldGlow:"transparent",color:monarch==="you"?T.gold:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>
-          {monarch==="you"?"\u{1F451} Monarch":"Claim Monarch"}
-        </button>
-        <button onClick={()=>setMonarch(monarch==="opp"?null:"opp")} style={{padding:"6px 12px",borderRadius:4,border:`1.5px solid ${monarch==="opp"?T.red:T.cardBorder}`,background:monarch==="opp"?`${T.red}15`:"transparent",color:monarch==="opp"?T.red:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>
-          {monarch==="opp"?"\u{1F451} Opp Monarch":"Opp Monarch"}
-        </button>
+        </div>)}
       </div>
     </div>}
-
-    {/* Coin + Dice */}
     {/* Storm + Turn + Dice */}
     <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
       <button onClick={flip} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:coinResult?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{coinResult||"Coin"}</button>
