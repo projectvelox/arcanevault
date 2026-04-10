@@ -120,11 +120,19 @@ async function fetchRandomCard() {
 
 // OCR scanner with worker caching, timeout, and fuzzy correction
 let _ocrWorker = null;
+let _ocrIdleTimer = null;
 async function getOcrWorker() {
+  if (_ocrIdleTimer) { clearTimeout(_ocrIdleTimer); _ocrIdleTimer = null; }
   if (_ocrWorker) return _ocrWorker;
   const { createWorker } = await import("tesseract.js");
   _ocrWorker = await createWorker("eng");
   return _ocrWorker;
+}
+function scheduleWorkerCleanup() {
+  if (_ocrIdleTimer) clearTimeout(_ocrIdleTimer);
+  _ocrIdleTimer = setTimeout(async () => {
+    if (_ocrWorker) { try { await _ocrWorker.terminate(); } catch {} _ocrWorker = null; }
+  }, 60000);
 }
 
 async function scanCardImage(file) {
@@ -137,7 +145,7 @@ async function scanCardImage(file) {
     const { data: { text } } = await worker.recognize(file);
     const rawLine = (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
     if (!rawLine) return "";
-    // Clean: remove common OCR garbage (mana symbols, numbers at end)
+    scheduleWorkerCleanup();
     const cleaned = rawLine.replace(/[{}\[\]|]/g, "").replace(/\d+$/,"").trim();
     // Fuzzy correct via Scryfall autocomplete
     try {
@@ -771,8 +779,9 @@ export default function App() {
         setDecks(fullDecks);
       }
 
-      // Merge local data to cloud on first login (safe: verify before deleting)
-      if(hasLocalData&&sBinds){
+      // Merge local data to cloud on first login (safe: verify before deleting, skip if already merged)
+      const alreadyMerged=await store.get("av-merged");
+      if(hasLocalData&&sBinds&&!alreadyMerged){
         let mergeSuccess=true;let mergedCards=0;let mergedDecks=0;
         const collBinder=sBinds.find(b=>b.binder_type==="collection");
         if(collBinder&&localBinders){
@@ -795,9 +804,10 @@ export default function App() {
         }
         // Only clear local data if merge had no failures
         if(mergeSuccess){
-          await store.set("av-binders",null);await store.set("av-decks",null);
+          await store.set("av-binders",null);await store.set("av-decks",null);await store.set("av-merged",true);
           toast(`Synced ${mergedCards} cards and ${mergedDecks} decks to cloud!`);
         }else{
+          if(mergedCards>0||mergedDecks>0)await store.set("av-merged",true); // partial merge, don't re-merge what succeeded
           toast(`Partial sync: ${mergedCards} cards, ${mergedDecks} decks. Local backup kept.`,"info");
         }
         // Reload from Supabase
@@ -1073,7 +1083,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
           {/* Missing cards list */}
           <div style={{maxHeight:200,overflowY:"auto"}}>
             <div style={{fontSize:10,color:T.textMuted,fontFamily:F.body,marginBottom:4,fontWeight:600}}>Missing Cards:</div>
-            {setCards.filter(c=>!allCollCards.has(c.id)).slice(0,30).map(c=>(
+            {setCards.filter(c=>!allCollCards.has(c.id)).map(c=>(
               <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:11,color:T.text,fontFamily:F.body}}>
                 <span style={{color:RARITY_CLR[c.rarity]||T.textDim,fontWeight:700,width:14,textAlign:"center"}}>{(c.rarity||"c")[0].toUpperCase()}</span>
                 <span>{c.collector_number}</span>
@@ -1081,7 +1091,6 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
                 <span style={{color:T.green,fontSize:10}}>{fmt(c.prices?.usd)}</span>
               </div>
             ))}
-            {setCards.filter(c=>!allCollCards.has(c.id)).length>30&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginTop:4}}>...and {setCards.filter(c=>!allCollCards.has(c.id)).length-30} more</div>}
             {setCards.filter(c=>!allCollCards.has(c.id)).length===0&&<div style={{fontSize:12,color:T.green,fontFamily:F.body,textAlign:"center",padding:8}}>Set complete!</div>}
           </div>
         </>;

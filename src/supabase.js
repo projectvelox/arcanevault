@@ -151,7 +151,7 @@ export const decksApi = {
     // Copy cards
     const { data: cards } = await supabase.from('deck_cards').select('*').eq('deck_id', id);
     if (cards && cards.length) {
-      const newCards = cards.map(c => ({ ...c, id: undefined, deck_id: newDeck.id, user_id: user.id }));
+      const newCards = cards.map(({id: _, ...c}) => ({ ...c, deck_id: newDeck.id, user_id: user.id }));
       await supabase.from('deck_cards').insert(newCards);
     }
     return { data: newDeck };
