@@ -195,16 +195,34 @@ async function scanCardImage(file) {
       worker.recognize(processed || file),
       new Promise((_, rej) => setTimeout(() => rej(new Error("OCR timeout")), 20000))
     ]);
-    const rawLine = (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
-    if (!rawLine) return "";
     scheduleWorkerCleanup();
-    const cleaned = rawLine.replace(/[{}\[\]|]/g, "").replace(/\d+$/,"").trim();
-    // Fuzzy correct via Scryfall autocomplete
+    // Also OCR the full unprocessed image for more text
+    let allText = text;
     try {
-      const suggestions = await fetchAutocomplete(cleaned);
-      if (suggestions.length > 0) return suggestions[0]; // Best match
+      const { data: { text: ft } } = await Promise.race([
+        worker.recognize(file),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("t")), 12000))
+      ]);
+      allText = text + "\n" + ft;
     } catch {}
-    return cleaned;
+    // Try multiple lines — find one Scryfall recognizes as a card name
+    const lines = allText.split("\n")
+      .map(l => l.replace(/[{}\[\]|_~`#@$%^&*()+=<>]/g, "").replace(/^\d+\s*/,"").replace(/\s*\d+$/,"").trim())
+      .filter(l => l.length >= 3 && l.length <= 50 && /[a-zA-Z]{3,}/.test(l));
+    for (const line of lines.slice(0, 10)) {
+      // Try autocomplete first (fast)
+      try {
+        const sug = await fetchAutocomplete(line);
+        if (sug.length > 0) return sug[0];
+      } catch {}
+      // Try fuzzy name match (more tolerant)
+      try {
+        await scryfallThrottle();
+        const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(line)}`);
+        if (res.ok) { const c = await res.json(); return c.name; }
+      } catch {}
+    }
+    return lines[0] || "";
   } catch (e) {
     // On error, kill worker so next scan gets a fresh one
     if (worker) { try { await worker.terminate(); } catch {} _ocrWorker = null; }
