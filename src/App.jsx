@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, cardsApi, decksApi, deckCardsApi, tradeApi, profileApi } from "./supabase.js";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCRYFALL API
@@ -553,24 +554,92 @@ export default function App() {
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
   const [showSettings,setShowSettings]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(false);
-  useEffect(()=>{store.get("av-settings").then(s=>{if(s)setSettings(s);else setShowOnboarding(true)})},[]);
-  useEffect(()=>{if(ready)store.set("av-settings",settings)},[settings,ready]);
+  const [user,setUser]=useState(null);
+  const [authMode,setAuthMode]=useState(null); // null=hidden, "signin", "signup"
+  const [authLoading,setAuthLoading]=useState(false);
+  const [authError,setAuthError]=useState("");
+  const isOnline=useRef(!!user);isOnline.current=!!user;
 
-  // Load data (migrate flat coll to binders if needed)
+  // Auth state listener
+  useEffect(()=>{
+    if(!supabase)return;
+    getSession().then(s=>{if(s?.user)setUser(s.user)});
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>{
+      setUser(session?.user||null);
+    });
+    return()=>subscription.unsubscribe();
+  },[]);
+
+  // Auth handlers
+  const handleAuth=async(email,password,name)=>{
+    setAuthLoading(true);setAuthError("");
+    try{
+      if(authMode==="signup"){
+        const{error}=await signUp(email,password,name||email.split("@")[0]);
+        if(error)throw error;
+        toast("Account created! Check your email to verify.");
+      }else{
+        const{error}=await signIn(email,password);
+        if(error)throw error;
+        toast("Welcome back, Planeswalker!");
+      }
+      setAuthMode(null);
+    }catch(e){setAuthError(e.message||"Authentication failed")}
+    setAuthLoading(false);
+  };
+  const handleSignOut=async()=>{await signOut();setUser(null);toast("Signed out")};
+
+  // Load settings
+  useEffect(()=>{
+    if(user){profileApi.get().then(({data})=>{if(data?.settings)setSettings(s=>({...s,...data.settings}))});}
+    else{store.get("av-settings").then(s=>{if(s)setSettings(s);else setShowOnboarding(true)})}
+  },[user]);
+  useEffect(()=>{
+    if(ready&&!user)store.set("av-settings",settings);
+    if(user)profileApi.update({settings});
+  },[settings,ready,user]);
+
+  // Load data: Supabase if logged in, IndexedDB if not
   useEffect(()=>{(async()=>{
-    const d=await store.get("av-decks");if(d)setDecks(d);
-    const b=await store.get("av-binders");
-    if(b){setBinders(b)}
-    else{const oldColl=await store.get("av-coll");if(oldColl&&oldColl.length){setBinders([{id:"main",name:"Collection",cards:oldColl},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}])}}
+    if(user){
+      // Load from Supabase
+      const{data:sBinds}=await bindersApi.list();
+      if(sBinds&&sBinds.length){
+        // Load cards for each binder
+        const fullBinders=await Promise.all(sBinds.map(async b=>{
+          const{data:cards}=await cardsApi.list(b.id);
+          return{...b,cards:(cards||[]).map(c=>({...c,id:c.scryfall_id,image_uris:c.image_uris||{},prices:c.prices||{},legalities:c.legalities||{},color_identity:c.color_identity||[]}))};
+        }));
+        setBinders(fullBinders);
+        if(fullBinders[0])setActiveBinder(fullBinders[0].id);
+      }
+      const{data:sDecks}=await decksApi.list();
+      if(sDecks){
+        const fullDecks=await Promise.all(sDecks.map(async d=>{
+          const{data:cards}=await deckCardsApi.list(d.id);
+          return{...d,cards:(cards||[]).map(c=>({...c,id:c.scryfall_id,board:c.board||"main",image_uris:c.image_uris||{},prices:c.prices||{},legalities:c.legalities||{},color_identity:c.color_identity||[]})),tags:d.tags||[],notes:d.notes||""};
+        }));
+        setDecks(fullDecks);
+      }
+    }else{
+      // Load from IndexedDB (offline mode)
+      const d=await store.get("av-decks");if(d)setDecks(d);
+      const b=await store.get("av-binders");
+      if(b){setBinders(b)}
+      else{const oldColl=await store.get("av-coll");if(oldColl&&oldColl.length){setBinders([{id:"main",name:"Collection",cards:oldColl},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}])}}
+    }
     setReady(true);
-  })()},[]);
-  useEffect(()=>{if(ready)store.set("av-decks",decks)},[decks,ready]);
-  useEffect(()=>{if(ready)store.set("av-binders",binders)},[binders,ready]);
+  })()},[user]);
+
+  // Persist to IndexedDB when offline
+  useEffect(()=>{if(ready&&!user)store.set("av-decks",decks)},[decks,ready,user]);
+  useEffect(()=>{if(ready&&!user)store.set("av-binders",binders)},[binders,ready,user]);
 
   // Derived: flat collection of all cards across binders (for "you own" badges)
   const allCollCards=useMemo(()=>{const m=new Map();binders.forEach(b=>b.cards.forEach(c=>{const ex=m.get(c.id);if(ex)m.set(c.id,{...ex,qty:ex.qty+c.qty});else m.set(c.id,{...c})}));return m},[binders]);
 
-  const addColl=useCallback((card,meta={})=>{
+  const addColl=useCallback(async(card,meta={})=>{
+    // Optimistic local update
     setBinders(p=>p.map(b=>{
       if(b.id!==activeBinder)return b;
       const ex=b.cards.find(c=>c.id===card.id&&(c.condition||"NM")===(meta.condition||"NM")&&(c.foil||false)===(meta.foil||false));
@@ -579,9 +648,16 @@ export default function App() {
     }));
     const binderName=binders.find(b=>b.id===activeBinder)?.name||"collection";
     toast(`Added ${card.name} to ${binderName}`);
+    // Persist to Supabase if logged in
+    if(isOnline.current){
+      try{await cardsApi.add(activeBinder,card,meta)}catch(e){console.error("Supabase sync error:",e)}
+    }
   },[activeBinder,binders,toast]);
-  const addDeck=useCallback((did,card,board="main")=>{
+  const addDeck=useCallback(async(did,card,board="main")=>{
     setDecks(p=>p.map(d=>{if(d.id!==did)return d;const ex=d.cards.find(c=>c.id===card.id&&c.board===board);if(ex)return{...d,cards:d.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
+    if(isOnline.current){
+      try{await deckCardsApi.add(did,card,board)}catch(e){console.error("Supabase sync error:",e)}
+    }
   },[]);
 
   const tabs=[{id:"search",icon:I.search,label:"Search"},{id:"vault",icon:I.vault,label:"Vault"},{id:"trade",icon:I.trade,label:"Trade"}];
@@ -599,6 +675,10 @@ export default function App() {
         <div style={{fontSize:10,fontWeight:600,letterSpacing:2,color:T.textDim,textTransform:"uppercase",marginTop:1,fontFamily:F.body}}>{hdr[tab][1]}</div>
       </div>
       <button onClick={()=>setShowSettings(!showSettings)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
+      {user?<button onClick={handleSignOut} style={{background:"none",border:"none",cursor:"pointer",padding:4,display:"flex",alignItems:"center",gap:4}}>
+        <div style={{width:26,height:26,borderRadius:13,background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#000",fontFamily:F.heading}}>{(user.user_metadata?.display_name||user.email||"?")[0].toUpperCase()}</div>
+      </button>
+      :<button onClick={()=>setAuthMode("signin")} style={{padding:"5px 12px",borderRadius:4,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Sign In</button>}
     </div>
 
     {/* Settings panel */}
@@ -615,6 +695,29 @@ export default function App() {
             {Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
           </select>
         </label>
+      </div>
+    </div>}
+
+    {/* Auth modal */}
+    {authMode&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.9)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}} onClick={()=>setAuthMode(null)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:8,padding:28,maxWidth:340,width:"100%",border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
+        <div style={{fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,textAlign:"center"}}>{authMode==="signup"?"Create Account":"Welcome Back"}</div>
+        <div style={{fontSize:11,color:T.textDim,textAlign:"center",marginBottom:16,fontFamily:F.body}}>{authMode==="signup"?"Join the Multiverse":"Enter the Vault"}</div>
+        {authError&&<div style={{padding:"8px 12px",borderRadius:4,background:"#2A0F0Faa",color:T.red,fontSize:11,marginBottom:12,fontFamily:F.body}}>{authError}</div>}
+        <form onSubmit={e=>{e.preventDefault();const fd=new FormData(e.target);handleAuth(fd.get("email"),fd.get("password"),fd.get("name"))}}>
+          {authMode==="signup"&&<input name="name" placeholder="Display name" style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>}
+          <input name="email" type="email" placeholder="Email" required style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <input name="password" type="password" placeholder="Password" required minLength={6} style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,marginBottom:14,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <button type="submit" disabled={authLoading} style={{width:"100%",padding:14,borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow,opacity:authLoading?.6:1}}>
+            {authLoading?"Loading...":authMode==="signup"?"Create Account":"Sign In"}
+          </button>
+        </form>
+        <div style={{textAlign:"center",marginTop:12}}>
+          <button onClick={()=>{setAuthMode(authMode==="signup"?"signin":"signup");setAuthError("")}} style={{background:"none",border:"none",color:T.gold,fontSize:12,cursor:"pointer",fontFamily:F.body,textDecoration:"underline"}}>
+            {authMode==="signup"?"Already have an account? Sign in":"Don't have an account? Sign up"}
+          </button>
+        </div>
+        <button onClick={()=>setAuthMode(null)} style={{display:"block",margin:"10px auto 0",background:"none",border:"none",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Continue without account</button>
       </div>
     </div>}
 

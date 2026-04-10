@@ -1,37 +1,45 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Graceful fallback when env vars are missing (e.g., before Vercel env setup)
+const isConfigured = !!(supabaseUrl && supabaseAnonKey);
+export const supabase = isConfigured ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+// Null-safe wrapper: returns {data:null,error:{message}} when not configured
+const guard = (fn) => async (...args) => {
+  if (!supabase) return { data: null, error: { message: 'Supabase not configured' } };
+  try { return await fn(...args); } catch (e) { return { data: null, error: { message: e.message || 'Unknown error' } }; }
+};
 
 // Auth helpers
-export async function signUp(email, password, displayName) {
+export const signUp = guard(async (email, password, displayName) => {
   const { data, error } = await supabase.auth.signUp({
-    email,
-    password,
-    options: { data: { display_name: displayName } }
+    email, password, options: { data: { display_name: displayName } }
   });
-  return { data, error };
-}
+  if (error) throw error;
+  return { data, error: null };
+});
 
-export async function signIn(email, password) {
+export const signIn = guard(async (email, password) => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-  return { data, error };
-}
+  if (error) throw error;
+  return { data, error: null };
+});
 
-export async function signOut() {
+export const signOut = guard(async () => {
   return await supabase.auth.signOut();
-}
+});
 
 export async function getSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session;
+  if (!supabase) return null;
+  try { const { data: { session } } = await supabase.auth.getSession(); return session; } catch { return null; }
 }
 
 export async function getUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
+  if (!supabase) return null;
+  try { const { data: { user } } = await supabase.auth.getUser(); return user; } catch { return null; }
 }
 
 // Binders CRUD
