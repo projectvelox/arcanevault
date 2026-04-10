@@ -560,19 +560,19 @@ const store = {
 // COMPONENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function Pip({s,sz=18}) {
-  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${MCLR[s]||"#ccc"}dd, ${MCLR[s]||"#aaa"})`,border:`1.5px solid ${MBDR[s]||"#666"}`,fontSize:sz*.55,fontWeight:800,color:MTXT[s]||"#fff",flexShrink:0,boxShadow:`inset 0 2px 3px rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4)`}}>{s}</span>;
+  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${MCLR[s]||"#ccc"}dd, ${MCLR[s]||"#aaa"})`,border:`1.5px solid ${MBDR[s]||"#666"}`,fontSize:Math.max(sz*.55,10),fontWeight:800,color:MTXT[s]||"#fff",flexShrink:0,boxShadow:`inset 0 2px 3px rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4)`}}>{s}</span>;
 }
 function Cost({c,sz=18}) {
   if(!c) return null;
-  return <span style={{display:"inline-flex",gap:2,alignItems:"center"}}>{(c.match(/\{([^}]+)\}/g)||[]).map((p,i)=>{const s=p.replace(/[{}]/g,"");return "WUBRGC".includes(s)?<Pip key={i} s={s} sz={sz}/>:<span key={i} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:"#ddd",border:"1.5px solid #bbb",fontSize:sz*.55,fontWeight:800,color:"#333"}}>{s}</span>;})}</span>;
+  return <span style={{display:"inline-flex",gap:2,alignItems:"center"}}>{(c.match(/\{([^}]+)\}/g)||[]).map((p,i)=>{const s=p.replace(/[{}]/g,"");return "WUBRGC".includes(s)?<Pip key={i} s={s} sz={sz}/>:<span key={i} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:"#ddd",border:"1.5px solid #bbb",fontSize:Math.max(sz*.55,10),fontWeight:800,color:"#333"}}>{s}</span>;})}</span>;
 }
 function RarityBadge({rarity,sz=16}) {
   const c = RARITY_CLR[rarity] || RARITY_CLR.common;
-  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:3,background:`${c}22`,border:`1px solid ${c}55`,fontSize:sz*.55,fontWeight:800,color:c,flexShrink:0,lineHeight:1}}>{(rarity||"c")[0].toUpperCase()}</span>;
+  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:3,background:`${c}22`,border:`1px solid ${c}55`,fontSize:Math.max(sz*.55,10),fontWeight:800,color:c,flexShrink:0,lineHeight:1}}>{(rarity||"c")[0].toUpperCase()}</span>;
 }
 function ColorPills({colors,setColors,size=34}) {
   return <>{Object.keys(MCLR).map(c=>(
-    <button key={c} onClick={()=>setColors(p=>p.includes(c)?p.filter(x=>x!==c):[...p,c])} style={{width:size,height:size,borderRadius:"50%",border:colors.includes(c)?`2.5px solid ${T.gold}`:"2px solid #333",background:MCLR[c],fontSize:size*.35,fontWeight:800,color:MTXT[c],cursor:"pointer",opacity:colors.includes(c)?1:.45,transition:"all .15s",flexShrink:0}}>{c}</button>
+    <button key={c} onClick={()=>setColors(p=>p.includes(c)?p.filter(x=>x!==c):[...p,c])} style={{width:size,height:size,borderRadius:"50%",border:colors.includes(c)?`2.5px solid ${T.gold}`:"2px solid #333",background:MCLR[c],fontSize:Math.max(size*.35,10),fontWeight:800,color:MTXT[c],cursor:"pointer",opacity:colors.includes(c)?1:.45,transition:"all .15s",flexShrink:0}}>{c}</button>
   ))}</>;
 }
 function TypeSelect({type,setType,h=34}) {
@@ -722,7 +722,7 @@ function PriceSparkline({snapshots}) {
     <div style={{display:"flex",alignItems:"flex-end",gap:1,height:24}}>
       {prices.slice(-14).map((p,i)=><div key={i} style={{flex:1,height:`${Math.max(4,((p-min)/range)*20)}px`,borderRadius:1,background:p>=first?T.green:T.red,opacity:.7}}/>)}
     </div>
-    <div style={{fontSize:9,color:delta>=0?T.green:T.red,fontFamily:F.body,marginTop:2}}>
+    <div style={{fontSize:11,color:delta>=0?T.green:T.red,fontFamily:F.body,marginTop:2}}>
       {delta>=0?"+":""}{delta.toFixed(2)} ({pct>=0?"+":""}{pct}%) over {prices.length} snapshots
     </div>
   </div>;
@@ -783,7 +783,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
           <span style={{fontSize:10,fontFamily:F.body,color:T.textDim}}>
             {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
           </span>
-          {supabase&&sliderToast&&<button onClick={async()=>{await priceApi.addSnapshot(card);sliderToast(`${card.name} added to price watch`);priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
+          {supabase&&sliderToast&&<button onClick={async()=>{await priceApi.addSnapshot(card);sliderToast(`${card.name} added to price watch`);priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))}} style={{fontSize:11,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
         </div>}
         <PriceSparkline snapshots={priceSnaps}/>
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
@@ -810,13 +810,13 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         {showRulings&&rulings.length>0&&<div style={{marginTop:8,maxHeight:180,overflowY:"auto",background:T.cardInner,borderRadius:10,padding:8}}>
           {rulings.map((r,i)=><div key={i} style={{padding:"6px 0",borderBottom:i<rulings.length-1?`1px solid ${T.cardBorder}`:"none"}}>
             <div style={{fontSize:11,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{r.comment}</div>
-            <div style={{fontSize:9,color:T.textDim,marginTop:2,fontFamily:F.body}}>{r.source} \u2022 {r.published_at}</div>
+            <div style={{fontSize:11,color:T.textDim,marginTop:2,fontFamily:F.body}}>{r.source} \u2022 {r.published_at}</div>
           </div>)}
         </div>}
         {showRulings&&rulings.length===0&&<div style={{marginTop:8,fontSize:11,color:T.textDim,fontFamily:F.body,textAlign:"center"}}>No rulings available</div>}
         {card.legalities&&<div style={{display:"flex",flexWrap:"wrap",gap:3,marginTop:8,justifyContent:"center"}}>
           {Object.entries(card.legalities).filter(([,v])=>v==="legal"||v==="banned"||v==="restricted").map(([f,v])=>
-            <span key={f} style={{padding:"2px 6px",borderRadius:4,fontSize:9,fontWeight:600,textTransform:"uppercase",background:v==="legal"?"#0F2A1A":v==="banned"?"#2A0F0F":"#1A1A2A",color:v==="legal"?T.green:v==="banned"?T.red:"#E8C349"}}>{f}</span>
+            <span key={f} style={{padding:"2px 6px",borderRadius:4,fontSize:11,fontWeight:600,textTransform:"uppercase",background:v==="legal"?"#0F2A1A":v==="banned"?"#2A0F0F":"#1A1A2A",color:v==="legal"?T.green:v==="banned"?T.red:"#E8C349"}}>{f}</span>
           )}
         </div>}
       </div>
@@ -1370,7 +1370,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
         {[["Total Cards",vs.totalCards,T.text],["Vault Value","$"+vs.totalValue.toFixed(2),T.green],["Unique Cards",vs.uniqueCards,T.text],["Sets Owned",vs.sets,T.text],[`${vs.deckCount} Decks`,`${vs.binderCount} Binders`,T.textMuted],["Foil Cards",vs.foilCount,T.purple]].map(([l,v,c],i)=>
           <div key={i} style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,textAlign:"center",boxShadow:S.cardFrame,backgroundImage:S.texture}}>
-            <div style={{fontSize:9,color:T.textDim,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>{l}</div>
+            <div style={{fontSize:11,color:T.textDim,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>{l}</div>
             <div style={{fontSize:18,fontWeight:800,color:c,marginTop:2,fontFamily:F.heading}}>{v}</div>
           </div>
         )}
@@ -1436,7 +1436,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
               </div>
               <div>
                 <div style={{fontSize:11,fontWeight:700,color:achieved?T.accent:T.textDim,fontFamily:F.body}}>{name}</div>
-                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>{desc}</div>
+                <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>{desc}</div>
               </div>
             </div>
           )}
@@ -1466,11 +1466,11 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
             <div style={{display:"flex",gap:12,marginBottom:8}}>
               <div style={{textAlign:"center",flex:1}}>
                 <div style={{fontSize:24,fontWeight:900,color:winRate>=50?T.green:T.red,fontFamily:F.heading}}>{winRate}%</div>
-                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Win Rate</div>
+                <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Win Rate</div>
               </div>
               <div style={{textAlign:"center",flex:1}}>
                 <div style={{fontSize:24,fontWeight:900,color:T.text,fontFamily:F.heading}}>{totalW+totalL}</div>
-                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Total Games</div>
+                <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Total Games</div>
               </div>
               <div style={{textAlign:"center",flex:1}}>
                 <div style={{fontSize:16,fontWeight:700,color:T.green,fontFamily:F.heading}}>{totalW}W</div>
@@ -1481,7 +1481,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
               Best deck: <span style={{color:T.accent,fontWeight:700}}>{bestDeck[0]}</span> ({bestDeck[1].w}W-{bestDeck[1].l}L)
             </div>}
             {topOpps.length>0&&<div>
-              <div style={{fontSize:9,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Most Faced Opponents:</div>
+              <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Most Faced Opponents:</div>
               {topOpps.map(([name,r])=><div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:F.body,padding:"2px 0"}}>
                 <span style={{color:T.textMuted}}>{name}</span>
                 <span style={{color:r.w>r.l?T.green:r.w<r.l?T.red:T.textDim}}>{r.w}W-{r.l}L</span>
@@ -1573,7 +1573,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
               <span style={{fontSize:12,color:T.textDim,fontFamily:F.body}}>{mainN} main{sideN>0?` / ${sideN} side`:""}</span>
               {deckColors.length>0&&<><span style={{display:"flex",gap:2}}>{deckColors.map(c=><Pip key={c} s={c} sz={14}/>)}</span>
               <span style={{fontSize:11,color:T.textMuted,fontFamily:F.body,fontStyle:"italic"}}>{colorName}</span></>}
-              {d.tags&&d.tags.map(t=><span key={t} style={{fontSize:9,padding:"2px 6px",borderRadius:3,background:T.goldGlow,color:T.gold,fontWeight:600,fontFamily:F.body}}>{t}</span>)}
+              {d.tags&&d.tags.map(t=><span key={t} style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:T.goldGlow,color:T.gold,fontWeight:600,fontFamily:F.body}}>{t}</span>)}
             </div>
           </div>
           <div style={{textAlign:"right"}}>
@@ -1733,9 +1733,9 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <div style={{fontSize:10,color:T.textMuted,marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Mana Curve</div>
           <div style={{display:"flex",alignItems:"flex-end",gap:4,height:48}}>
             {[0,1,2,3,4,5,6,7].map(cmc=><div key={cmc} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
-              <div style={{fontSize:9,color:T.textDim,marginBottom:2}}>{stats.curve[cmc]||0}</div>
+              <div style={{fontSize:11,color:T.textDim,marginBottom:2}}>{stats.curve[cmc]||0}</div>
               <div style={{width:"100%",borderRadius:"3px 3px 0 0",height:`${((stats.curve[cmc]||0)/mx)*32}px`,background:`linear-gradient(180deg,${T.gold},#7A6530)`,transition:"height .3s"}}/>
-              <div style={{fontSize:9,color:T.textDim,marginTop:2}}>{cmc===7?"7+":cmc}</div>
+              <div style={{fontSize:11,color:T.textDim,marginTop:2}}>{cmc===7?"7+":cmc}</div>
             </div>)}
           </div>
         </div>
@@ -1766,12 +1766,12 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <button onClick={newGame} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:showSim?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.simulate(T.gold)} Playtest</button>
       <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Import</button>
       <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
-      <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
-      <button onClick={fetchSuggestions} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:showSuggest?`${T.purple}15`:"transparent",color:T.purple,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{sugLoading?"...":"Suggest"}</button>
+      <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
+      <button onClick={fetchSuggestions} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:showSuggest?`${T.purple}15`:"transparent",color:T.purple,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{sugLoading?"...":"Suggest"}</button>
       {supabase&&user&&<button onClick={async()=>{
         if(deck.is_public){await sharingApi.unshareDeck(deckId);setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:false,share_id:null}:d));toast("Deck unshared")}
         else{const{shareId}=await sharingApi.shareDeck(deckId);if(shareId){setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:true,share_id:shareId}:d));navigator.clipboard.writeText(`${window.location.origin}?deck=${shareId}`).then(()=>toast("Share link copied!")).catch(()=>toast(`Share ID: ${shareId}`))}}
-      }} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${deck.is_public?T.green:T.blue}`,background:deck.is_public?`${T.green}15`:"transparent",color:deck.is_public?T.green:T.blue,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{deck.is_public?"Shared":"Share"}</button>}
+      }} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${deck.is_public?T.green:T.blue}`,background:deck.is_public?`${T.green}15`:"transparent",color:deck.is_public?T.green:T.blue,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{deck.is_public?"Shared":"Share"}</button>}
     </div>
 
     {/* Card suggestions */}
@@ -1786,8 +1786,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6}}>
         {suggestions.map(c=><div key={c.id} style={{flexShrink:0,width:90,textAlign:"center"}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:90,borderRadius:4,display:"block",cursor:"pointer"}} onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}}/>
-          <div style={{fontSize:9,color:T.text,marginTop:3,lineHeight:1.2,fontFamily:F.body,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-          <div style={{fontSize:8,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</div>
+          <div style={{fontSize:11,color:T.text,marginTop:3,lineHeight:1.2,fontFamily:F.body,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+          <div style={{fontSize:10,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</div>
         </div>)}
       </div>
     </div>}
@@ -1802,12 +1802,12 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <span style={{fontSize:12,fontWeight:700,color:T.textMuted,fontFamily:F.heading}}>{deck.wins||0}-{deck.losses||0}</span>
           <button onClick={()=>{const opp=prompt("Opponent deck (optional):");setDecks(p=>p.map(d=>d.id===deckId?{...d,losses:(d.losses||0)+1,matchLog:[...(d.matchLog||[]),{result:"L",vs:opp||"",date:new Date().toISOString().split("T")[0]}]}:d));toast("Loss logged")}} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+L</button>
         </div>
-        {deck.matchLog?.length>0&&<button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:9,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body}}>{deck.matchLog.length} matches</button>}
+        {deck.matchLog?.length>0&&<button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body}}>{deck.matchLog.length} matches</button>}
       </div>
       {showNotes&&<>
         <textarea value={deck.notes||""} onChange={e=>updateNotes(e.target.value)} placeholder="Deck strategy, matchup notes, card choices..." style={{width:"100%",marginTop:6,height:60,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,resize:"vertical",boxSizing:"border-box",fontFamily:F.body,lineHeight:1.5,boxShadow:S.insetInput}}/>
         {deck.matchLog?.length>0&&<div style={{marginTop:6,maxHeight:120,overflowY:"auto"}}>
-          <div style={{fontSize:9,color:T.textMuted,fontFamily:F.body,marginBottom:4,fontWeight:600}}>Match History</div>
+          <div style={{fontSize:11,color:T.textMuted,fontFamily:F.body,marginBottom:4,fontWeight:600}}>Match History</div>
           {deck.matchLog.slice(-10).reverse().map((m,i)=><div key={i} style={{display:"flex",gap:6,fontSize:10,fontFamily:F.body,padding:"2px 0"}}>
             <span style={{color:m.result==="W"?T.green:T.red,fontWeight:700,width:14}}>{m.result}</span>
             <span style={{color:T.textDim}}>{m.date}</span>
@@ -1841,11 +1841,11 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <div style={{display:"flex",gap:8,fontSize:11,color:T.textDim,marginBottom:8,fontFamily:F.body}}><span>Library: {lib.length}</span><span>Hand: {hand.length}</span><span>Turn {turn}</span></div>
       <div style={{fontSize:10,color:T.gold,fontWeight:600,marginBottom:4,fontFamily:F.body}}>{mullPhase?"Tap cards to put on bottom:":"Opening Hand"}</div>
       <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,WebkitOverflowScrolling:"touch"}}>
-        {hand.map(c=><div key={c.uid} onClick={()=>mullPhase&&putBack(c.uid)} style={{flexShrink:0,width:80,cursor:mullPhase?"pointer":"default",opacity:mullPhase?.9:1}}><img src={getImg(c,"small")} alt={c.name} style={{width:80,borderRadius:4,display:"block",border:mullPhase?`2px solid ${T.gold}44`:"2px solid transparent"}}/><div style={{fontSize:9,color:T.text,marginTop:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div></div>)}
+        {hand.map(c=><div key={c.uid} onClick={()=>mullPhase&&putBack(c.uid)} style={{flexShrink:0,width:80,cursor:mullPhase?"pointer":"default",opacity:mullPhase?.9:1}}><img src={getImg(c,"small")} alt={c.name} style={{width:80,borderRadius:4,display:"block",border:mullPhase?`2px solid ${T.gold}44`:"2px solid transparent"}}/><div style={{fontSize:11,color:T.text,marginTop:2,textAlign:"center",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div></div>)}
       </div>
       {drawn.length>0&&<><div style={{fontSize:10,color:T.green,fontWeight:600,marginTop:6,marginBottom:4,fontFamily:F.body}}>Draws</div>
         <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
-          {drawn.map((c,i)=><div key={c.uid} style={{flexShrink:0,width:64}}><img src={getImg(c,"small")} alt={c.name} style={{width:64,borderRadius:3,display:"block"}}/><div style={{fontSize:8,color:T.textDim,marginTop:1,textAlign:"center",fontFamily:F.body}}>T{turn-drawn.length+i+1}</div></div>)}
+          {drawn.map((c,i)=><div key={c.uid} style={{flexShrink:0,width:64}}><img src={getImg(c,"small")} alt={c.name} style={{width:64,borderRadius:3,display:"block"}}/><div style={{fontSize:10,color:T.textDim,marginTop:1,textAlign:"center",fontFamily:F.body}}>T{turn-drawn.length+i+1}</div></div>)}
         </div></>}
     </div>}
 
@@ -1861,7 +1861,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       {addResults.map(c=>{const owned=allCollCards?.get(c.id);return<div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.cardBorder}`}}>
         <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
-          <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/>{owned&&<span style={{fontSize:9,padding:"1px 4px",borderRadius:3,background:"#0F2A1A",color:T.green,fontWeight:600}}>Own {owned.qty}</span>}</div><Cost c={c.mana_cost} sz={12}/></div>
+          <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/>{owned&&<span style={{fontSize:11,padding:"1px 4px",borderRadius:3,background:"#0F2A1A",color:T.green,fontWeight:600}}>Own {owned.qty}</span>}</div><Cost c={c.mana_cost} sz={12}/></div>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0}}>
           <button onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}} style={{padding:"6px 10px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
@@ -1913,7 +1913,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
             <span style={{fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-            <span style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>{stats.drawProb(c.qty,stats.mainN)}%</span>
+            <span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>{stats.drawProb(c.qty,stats.mainN)}%</span>
             <span style={{fontSize:11,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
             <button onClick={e=>{e.stopPropagation();rmCard(c.id,board)}} style={{width:28,height:28,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           </div>
@@ -2024,7 +2024,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:14}}>
       {[["Unique",coll.length,T.text],["Total",totalCards,T.text],["Value","$"+totalVal.toFixed(2),T.green]].map(([l,v,c])=>
         <div key={l} style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:10,textAlign:"center",boxShadow:S.cardFrame}}>
-          <div style={{fontSize:9,color:T.textDim,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>{l}</div>
+          <div style={{fontSize:11,color:T.textDim,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>{l}</div>
           <div style={{fontSize:16,fontWeight:800,color:c,marginTop:2,fontFamily:F.heading}}>{v}</div>
         </div>
       )}
@@ -2093,9 +2093,9 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
         <div style={{display:"flex",gap:4,alignItems:"center",marginTop:2,flexWrap:"wrap"}}><Cost c={c.mana_cost} sz={12}/><span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{c.set_name}</span>
-          {c.condition&&c.condition!=="NM"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:c.condition==="LP"?"#2A2A0F":c.condition==="MP"?"#2A1A0F":"#2A0F0F",color:c.condition==="LP"?"#E8C349":c.condition==="MP"?"#F09030":T.red,fontWeight:700}}>{c.condition}</span>}
-          {c.foil&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:"#1A0F2A",color:T.purple,fontWeight:700}}>FOIL</span>}
-          {c.language&&c.language!=="en"&&<span style={{fontSize:8,padding:"1px 4px",borderRadius:3,background:T.cardInner,color:T.textDim}}>{c.language.toUpperCase()}</span>}
+          {c.condition&&c.condition!=="NM"&&<span style={{fontSize:10,padding:"1px 4px",borderRadius:3,background:c.condition==="LP"?"#2A2A0F":c.condition==="MP"?"#2A1A0F":"#2A0F0F",color:c.condition==="LP"?"#E8C349":c.condition==="MP"?"#F09030":T.red,fontWeight:700}}>{c.condition}</span>}
+          {c.foil&&<span style={{fontSize:10,padding:"1px 4px",borderRadius:3,background:"#1A0F2A",color:T.purple,fontWeight:700}}>FOIL</span>}
+          {c.language&&c.language!=="en"&&<span style={{fontSize:10,padding:"1px 4px",borderRadius:3,background:T.cardInner,color:T.textDim}}>{c.language.toUpperCase()}</span>}
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
@@ -2131,8 +2131,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         <input value={cc?.notes||""} onChange={e=>editCardMeta(card.id,"notes",e.target.value)} placeholder="Card notes..." style={{width:"100%",marginTop:6,padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,fontFamily:F.body,boxSizing:"border-box",boxShadow:S.insetInput}}/>
         {/* Custom tags */}
         <div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}}>
-          {(cc?.tags||[]).map(t=><span key={t} onClick={()=>{const newTags=(cc.tags||[]).filter(x=>x!==t);editCardMeta(card.id,"tags",newTags)}} style={{fontSize:9,padding:"2px 6px",borderRadius:3,background:T.goldGlow,color:T.gold,cursor:"pointer",fontFamily:F.body}}>{t} x</span>)}
-          <input placeholder="+ tag" onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const newTags=[...(cc?.tags||[]),e.target.value.trim()];editCardMeta(card.id,"tags",newTags);e.target.value=""}}} style={{width:60,padding:"2px 6px",borderRadius:3,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:9,fontFamily:F.body}}/>
+          {(cc?.tags||[]).map(t=><span key={t} onClick={()=>{const newTags=(cc.tags||[]).filter(x=>x!==t);editCardMeta(card.id,"tags",newTags)}} style={{fontSize:11,padding:"2px 6px",borderRadius:3,background:T.goldGlow,color:T.gold,cursor:"pointer",fontFamily:F.body}}>{t} x</span>)}
+          <input placeholder="+ tag" onKeyDown={e=>{if(e.key==="Enter"&&e.target.value.trim()){const newTags=[...(cc?.tags||[]),e.target.value.trim()];editCardMeta(card.id,"tags",newTags);e.target.value=""}}} style={{width:60,padding:"2px 6px",borderRadius:3,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,fontFamily:F.body}}/>
         </div>
       </div>}}
     />}
@@ -2176,17 +2176,17 @@ function GameTools({toast}) {
     <div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
       <div style={{display:"grid",gridTemplateColumns:playerCount<=2?"1fr 1fr":"1fr 1fr",gap:8}}>
         {players.map((pl,idx)=><div key={idx} style={{textAlign:"center",padding:8,borderRadius:4,background:T.cardInner,border:monarch===idx?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`}}>
-          <div style={{fontSize:9,color:T.textDim,fontFamily:F.body,marginBottom:2}}>{pl.name}{monarch===idx?" \u{1F451}":""}</div>
+          <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:2}}>{pl.name}{monarch===idx?" \u{1F451}":""}</div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
             <button onClick={()=>adjPlayer(idx,"life",-1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
             <div style={{fontSize:playerCount<=2?32:24,fontWeight:900,color:pl.life<=0?T.red:T.accent,fontFamily:F.heading,minWidth:36,textShadow:pl.life<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{pl.life}</div>
             <button onClick={()=>adjPlayer(idx,"life",1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
           {format==="commander"&&<div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
-            <div style={{fontSize:8,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.cmd}</button></div>
-            <div style={{fontSize:8,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.poison}</button></div>
+            <div style={{fontSize:10,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.cmd}</button></div>
+            <div style={{fontSize:10,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.poison}</button></div>
           </div>}
-          <button onClick={()=>setMonarch(monarch===idx?null:idx)} style={{marginTop:2,background:"none",border:"none",color:monarch===idx?T.gold:T.textDim,fontSize:8,cursor:"pointer",fontFamily:F.body}}>{monarch===idx?"Monarch":"Set Monarch"}</button>
+          <button onClick={()=>setMonarch(monarch===idx?null:idx)} style={{marginTop:2,background:"none",border:"none",color:monarch===idx?T.gold:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>{monarch===idx?"Monarch":"Set Monarch"}</button>
         </div>)}
       </div>
     </div>
@@ -2197,7 +2197,7 @@ function GameTools({toast}) {
     {showExtra&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginTop:6,boxShadow:S.cardFrame}}>
       <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(playerCount,2)},1fr)`,gap:8}}>
         {players.map((pl,idx)=><div key={idx} style={{textAlign:"center"}}>
-          <div style={{fontSize:9,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>{pl.name} Energy</div>
+          <div style={{fontSize:11,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>{pl.name} Energy</div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
             <button onClick={()=>adjPlayer(idx,"energy",-1)} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
             <span style={{fontSize:20,fontWeight:800,color:"#E8C349",fontFamily:F.heading}}>{pl.energy}</span>
@@ -2212,7 +2212,7 @@ function GameTools({toast}) {
       <button onClick={()=>roll(20)} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{diceResult?`D20:${diceResult}`:"D20"}</button>
       <button onClick={()=>roll(6)} style={{padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>D6</button>
       <div style={{display:"flex",alignItems:"center",gap:2}}>
-        <button onClick={()=>setStormCount(0)} style={{width:20,height:20,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>0</button>
+        <button onClick={()=>setStormCount(0)} style={{width:20,height:20,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>0</button>
         <button onClick={()=>setStormCount(v=>v+1)} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${stormCount>0?T.purple:T.cardBorder}`,background:stormCount>0?`${T.purple}15`:"transparent",color:stormCount>0?T.purple:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Storm:{stormCount}</button>
       </div>
       <button onClick={()=>{setTurnNum(v=>v+1);setStormCount(0)}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.gold}44`,background:"transparent",color:T.textMuted,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Turn {turnNum} \u2192</button>
@@ -2255,7 +2255,7 @@ function TradeView({toast}) {
     <div style={{background:T.card,borderRadius:4,border:`1px solid ${clr}22`,minHeight:100,padding:6,boxShadow:S.cardFrame}}>
       {cards.map(c=><div key={c.uid} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 6px",borderRadius:4,marginBottom:3,background:T.cardInner}}>
         <img src={getImg(c,"small")} alt={c.name} style={{width:24,height:34,borderRadius:3,objectFit:"cover",flexShrink:0}}/>
-        <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:9,color:T.green,fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{fmt(c.prices?.usd)}</span></div>
+        <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:11,color:T.green,fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{fmt(c.prices?.usd)}</span></div>
         <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
           <button onClick={()=>onAdj(c.uid,-1)} style={{width:28,height:28,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           <span style={{fontSize:10,fontWeight:700,minWidth:14,textAlign:"center",fontFamily:F.body}}>{c.qty||1}</span>
