@@ -255,6 +255,7 @@ const T = {
 
 // Fonts
 const F = { heading: "'Cinzel', serif", body: "'Cormorant Garamond', 'Palatino Linotype', serif", ui: "'Cormorant Garamond', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" };
+const GLOW = "0 0 20px rgba(201,169,110,.25)";
 
 // MTG-style CSS patterns
 const S = {
@@ -333,7 +334,7 @@ const store = {
 // COMPONENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function Pip({s,sz=18}) {
-  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:MCLR[s]||"#aaa",border:`1.5px solid ${MBDR[s]||"#666"}`,fontSize:sz*.55,fontWeight:800,color:MTXT[s]||"#fff",flexShrink:0}}>{s}</span>;
+  return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:"50%",background:`radial-gradient(circle at 35% 30%, ${MCLR[s]||"#ccc"}dd, ${MCLR[s]||"#aaa"})`,border:`1.5px solid ${MBDR[s]||"#666"}`,fontSize:sz*.55,fontWeight:800,color:MTXT[s]||"#fff",flexShrink:0,boxShadow:`inset 0 2px 3px rgba(255,255,255,.25), inset 0 -2px 3px rgba(0,0,0,.35), 0 1px 2px rgba(0,0,0,.4)`}}>{s}</span>;
 }
 function Cost({c,sz=18}) {
   if(!c) return null;
@@ -410,7 +411,6 @@ function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
   return <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",flexDirection:"column",gap:6,width:"90%",maxWidth:400,pointerEvents:"none"}}>
     {toasts.map(t => <div key={t.id} style={{padding:"10px 16px",borderRadius:12,display:"flex",alignItems:"center",gap:8,background:t.type==="success"?"#0F2A1A":t.type==="error"?"#2A0F0F":T.surface,border:`1px solid ${t.type==="success"?T.green+"44":t.type==="error"?T.red+"44":T.cardBorder}`,color:t.type==="success"?T.green:t.type==="error"?T.red:T.text,fontSize:13,fontWeight:600,fontFamily:F.body,boxShadow:"0 4px 20px rgba(0,0,0,.5)",animation:"toastIn .25s ease-out"}}>{t.type==="success"&&I.check(T.green)}{t.msg}</div>)}
-    <style>{`@keyframes toastIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}`}</style>
   </div>;
 }
 
@@ -423,7 +423,6 @@ function SkeletonGrid({count=6}) {
       <div style={{width:"100%",paddingTop:"140%",background:`linear-gradient(110deg, ${T.card} 30%, ${T.surface} 50%, ${T.card} 70%)`,backgroundSize:"200% 100%",animation:"shimmer 1.5s infinite"}}/>
       <div style={{padding:10}}><div style={{width:"70%",height:12,borderRadius:4,background:T.surface,marginBottom:6}}/><div style={{width:"40%",height:10,borderRadius:4,background:T.surface}}/></div>
     </div>)}
-    <style>{`@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}`}</style>
   </div>;
 }
 
@@ -438,7 +437,6 @@ function BottomSheet({open,onClose,children}) {
       <div style={{display:"flex",justifyContent:"center",padding:"10px 0 4px"}}><div style={{width:40,height:4,borderRadius:2,background:"#3A3D4E"}}/></div>
       {children}
     </div>
-    <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
   </div>;
 }
 function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.red,onConfirm,onCancel}) {
@@ -663,7 +661,7 @@ export default function App() {
   const tabs=[{id:"search",icon:I.search,label:"Search"},{id:"vault",icon:I.vault,label:"Vault"},{id:"trade",icon:I.trade,label:"Trade"}];
   const hdr={search:["Search","Scry the Multiverse"],vault:["Vault","Decks & Collection"],trade:["Trade","Card Evaluator"]};
 
-  return <div style={{minHeight:"100vh",background:S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative"}}>
+  return <div style={{minHeight:"100vh",background:S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative",animation:"blindEternities 20s ease-in-out infinite"}}>
     <ToastContainer toasts={toasts}/>
     {/* Branded header with filigree */}
     <div style={{padding:"14px 18px 10px",flexShrink:0,background:`linear-gradient(180deg, ${T.surface} 0%, transparent 100%)`,borderBottom:"1px solid transparent",borderImage:S.filigree,borderImageSlice:1,display:"flex",alignItems:"center",gap:10}}>
@@ -738,15 +736,17 @@ export default function App() {
     </div>}
 
     <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
+      <div key={tab} style={{animation:"fadeSlideIn .25s ease-out"}}>
       {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast} allCollCards={allCollCards}/>}
       {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards}/>}
       {tab==="trade"&&<TradeView toast={toast}/>}
+      </div>
     </div>
 
     {/* Nav with filigree top border */}
     <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"linear-gradient(0deg, #0A0C12 0%, rgba(12,14,20,.97) 100%)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:"1px solid transparent",borderImage:S.filFaint,borderImageSlice:1,display:"flex",padding:"8px 0 env(safe-area-inset-bottom,8px)",zIndex:100}}>
       {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",padding:"4px 0",transition:"all .15s",position:"relative"}}>
-        {tab===t.id&&<div style={{position:"absolute",top:-1,left:"20%",right:"20%",height:1,borderRadius:1,background:`linear-gradient(90deg, transparent, ${T.accent}, transparent)`,opacity:.8}}/>}
+        {tab===t.id&&<div style={{position:"absolute",top:-6,left:"15%",right:"15%",height:12,background:`radial-gradient(ellipse at 50% 100%, ${T.gold}88 0%, transparent 70%)`,filter:"blur(4px)",opacity:.6}}/>}
         <span style={{lineHeight:0}}>{t.icon(tab===t.id?T.gold:T.textDim)}</span>
         <span style={{fontSize:10,fontWeight:tab===t.id?700:500,letterSpacing:.5,color:tab===t.id?T.gold:T.textDim,fontFamily:F.body}}>{t.label}</span>
       </button>)}
@@ -767,6 +767,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
+  const [showBurst,setShowBurst]=useState(false);
   const fileRef=useRef();
 
   useEffect(()=>{fetchSets().then(setSets);fetchRandomCard().then(setCotd)},[]);
@@ -801,7 +802,6 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       {scanPreview&&<img src={scanPreview} alt="scan" style={{maxWidth:"70%",maxHeight:"40vh",borderRadius:12,border:`2px solid ${T.gold}`}}/>}
       <div style={{fontSize:15,color:T.gold,fontWeight:600,fontFamily:F.body}}>{scanStatus}</div>
       <div style={{width:120,height:3,borderRadius:2,background:T.cardBorder,overflow:"hidden"}}><div style={{width:"70%",height:"100%",background:T.gold,borderRadius:2,animation:"pulse 1s ease-in-out infinite alternate"}}/></div>
-      <style>{`@keyframes pulse{from{opacity:.4;width:30%}to{opacity:1;width:80%}}`}</style>
     </div>}
 
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
@@ -837,7 +837,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
 
     {(!loading||results.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4,paddingBottom:16}}>
       {results.map((card,i)=>{const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;return(
-        <div key={card.id} onClick={()=>{setSlideIdx(i);setShowAdd(false)}} style={{borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${T.cardBorder}`,cursor:"pointer",boxShadow:S.cardFrame,backgroundImage:S.texture,borderTop:`2px solid ${card.rarity!=="common"?rc:T.cardBorder}`}}>
+        <div key={card.id} onClick={()=>{setSlideIdx(i);setShowAdd(false)}} style={{borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${T.cardBorder}`,cursor:"pointer",boxShadow:card.rarity==="mythic"?`inset 0 0 0 1px #F0683444, 0 0 12px #F0683422, 0 2px 8px rgba(0,0,0,.4)`:card.rarity==="rare"?`0 0 0 1px #E8C34944, 0 2px 8px #E8C34933`:S.cardFrame,backgroundImage:S.texture,borderTop:`2px solid ${card.rarity!=="common"?rc:T.cardBorder}`,animation:card.rarity==="mythic"?"mythicPulse 2.5s ease-in-out infinite":undefined,transition:"transform .15s",WebkitTapHighlightColor:"transparent"}}>
           <img src={getImg(card)} alt={card.name} loading="lazy" style={{width:"100%",display:"block"}}/>
           <div style={{padding:"8px 10px 10px"}}>
             <div style={{fontSize:13,fontWeight:700,color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{card.name}</div>
@@ -852,13 +852,18 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     </div>}
 
     {/* Card of the Day — empty state */}
-    {!hasQuery&&!loading&&<div style={{textAlign:"center",padding:"32px 20px",color:T.textDim}}>
-      <div style={{fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:1,marginBottom:4}}>The Blind Eternities Await</div>
+    {!hasQuery&&!loading&&<div style={{textAlign:"center",padding:"32px 20px",color:T.textDim,position:"relative",overflow:"hidden"}}>
+      {/* Floating ambient particles */}
+      {[0,1,2].map(i=><div key={i} style={{position:"absolute",width:100+i*40,height:100+i*40,borderRadius:"50%",background:`radial-gradient(circle, ${T.gold}22, transparent)`,animation:`float ${7+i*2}s ease-in-out infinite`,animationDelay:`${i*2.5}s`,top:`${10+i*25}%`,left:`${10+i*30}%`,pointerEvents:"none"}}/>)}
+      <div style={{position:"relative",fontSize:26,fontWeight:900,color:T.accent,fontFamily:F.heading,letterSpacing:2.5,marginBottom:6,textTransform:"uppercase",textShadow:GLOW}}>The Blind Eternities Await</div>
       <div style={{fontSize:13,color:T.textMuted,fontFamily:F.body,marginBottom:20}}>Name a spell, choose your colors, or divine a card by sight</div>
       {cotd&&<div style={{position:"relative",overflow:"hidden",background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame,padding:16,textAlign:"center"}}>
         <ArtBg src={getImg(cotd)} opacity={.12} blur={30}/>
         <div style={{position:"relative",fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:10,fontFamily:F.heading}}>Card of the Day</div>
-        <img src={getImg(cotd)} alt={cotd.name} style={{maxWidth:"65%",borderRadius:10,marginBottom:10,position:"relative"}}/>
+        <div style={{position:"relative",display:"inline-block",maxWidth:"65%",marginBottom:10}}>
+          <img src={getImg(cotd)} alt={cotd.name} style={{width:"100%",borderRadius:10,display:"block"}}/>
+          <div style={{position:"absolute",inset:0,borderRadius:10,background:"linear-gradient(105deg, transparent 40%, rgba(255,219,112,.12) 45%, rgba(132,204,255,.08) 50%, rgba(255,112,253,.06) 55%, transparent 60%)",backgroundSize:"200% 200%",animation:"foilSweep 3s ease-in-out infinite",mixBlendMode:"screen",pointerEvents:"none"}}/>
+        </div>
         <div style={{position:"relative",background:"rgba(12,14,20,.85)",borderRadius:8,padding:"10px 14px",marginTop:4}}>
           <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{cotd.name}</div>
           {cotd.flavor_text&&<div style={{fontSize:12,color:T.textMuted,fontStyle:"italic",marginTop:6,lineHeight:1.6,fontFamily:F.body}}>"{cotd.flavor_text}"</div>}
@@ -874,7 +879,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     {slideIdx>=0&&results[slideIdx]&&<CardSlider cards={results} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
       actions={(card)=><div>
         <div style={{display:"flex",gap:10}}>
-          <button onClick={()=>{addColl(card);setSlideIdx(-1)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>+ Collection</button>
+          <button onClick={()=>{addColl(card);setShowBurst(true);setTimeout(()=>{setShowBurst(false);setSlideIdx(-1)},400)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>+ Collection</button>
           <button onClick={()=>setShowAdd(!showAdd)} style={{flex:1,padding:14,borderRadius:12,border:`2px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+ Deck</button>
         </div>
         {showAdd&&decks.length>0&&<div style={{marginTop:8}}>{decks.map(d=>
@@ -883,6 +888,11 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         {showAdd&&decks.length===0&&<div style={{padding:12,color:T.textDim,fontSize:12,textAlign:"center",fontFamily:F.body}}>Create a deck first in the Vault</div>}
       </div>}
     />}
+
+    {/* Collect burst */}
+    {showBurst&&<div style={{position:"fixed",inset:0,zIndex:600,pointerEvents:"none",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{width:200,height:200,borderRadius:"50%",background:`radial-gradient(circle, ${T.gold}66, transparent 70%)`,animation:"collectBurst .5s ease-out forwards"}}/>
+    </div>}
   </div>;
 }
 
@@ -1007,7 +1017,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
     </div>}
 
     {decks.length===0?<div style={{textAlign:"center",padding:"48px 20px",color:T.textDim}}>
-      <div style={{marginBottom:12}}>{I.deck(T.textDim)}</div>
+      <div style={{width:72,height:72,borderRadius:36,background:`linear-gradient(135deg, ${T.card}, ${T.surface})`,border:`1.5px solid ${T.gold}33`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",animation:"pulseGlow 3s ease-in-out infinite"}}>{I.deck(T.textDim)}</div>
       <div style={{fontSize:15,color:T.textMuted,fontFamily:F.body}}>No decks yet</div>
       <div style={{fontSize:13,marginTop:4,marginBottom:14,fontFamily:F.body}}>Tap + New Deck to build your first spellbook</div>
       <div style={{fontSize:13,color:T.textDim,fontStyle:"italic",lineHeight:1.6,fontFamily:F.body}}>{randomFlavor("decks")}</div>

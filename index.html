@@ -78,6 +78,54 @@
       * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       body { background: #0C0E14; overflow-x: hidden; }
       #root { min-height: 100dvh; }
+
+      /* Personality animations */
+      @keyframes mythicPulse {
+        0%, 100% { filter: brightness(1) drop-shadow(0 0 3px rgba(240,104,52,.25)); }
+        50% { filter: brightness(1.12) drop-shadow(0 0 10px rgba(240,104,52,.5)); }
+      }
+      @keyframes foilSweep {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      @keyframes collectBurst {
+        0% { opacity: 1; transform: scale(.5); }
+        50% { opacity: .5; transform: scale(1.5); }
+        100% { opacity: 0; transform: scale(2.5); }
+      }
+      @keyframes fadeSlideIn {
+        from { opacity: 0; transform: translateY(8px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 0 20px rgba(201,169,110,.1); }
+        50% { box-shadow: 0 0 40px rgba(201,169,110,.25); }
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0) scale(1); opacity: .04; }
+        50% { transform: translateY(-30px) scale(1.15); opacity: .08; }
+      }
+      @keyframes blindEternities {
+        0%, 100% { box-shadow: inset 0 0 100px 30px rgba(15,8,30,.5); }
+        33% { box-shadow: inset 0 0 100px 30px rgba(8,15,30,.5); }
+        66% { box-shadow: inset 0 0 100px 30px rgba(15,12,8,.4); }
+      }
+      @keyframes shimmer {
+        from { background-position: 200% 0; }
+        to { background-position: -200% 0; }
+      }
+      @keyframes toastIn {
+        from { opacity: 0; transform: translateY(-12px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes slideUp {
+        from { transform: translateY(100%); }
+        to { transform: translateY(0); }
+      }
+      @keyframes pulse {
+        from { opacity: .4; width: 30%; }
+        to { opacity: 1; width: 80%; }
+      }
     </style>
   </head>
   <body>
