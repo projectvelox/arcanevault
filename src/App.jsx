@@ -1045,8 +1045,9 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 
     {/* Deck header — blurred card art background */}
     <div style={{position:"relative",overflow:"hidden",background:`linear-gradient(135deg, ${tint} 0%, ${T.card} 100%)`,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:12,boxShadow:S.cardFrame}}>
-      <ArtBg src={deck.cards[0]?getImg(deck.cards[0]):null} opacity={.15} blur={24}/>
-      <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <ArtBg src={deck.cards[0]?getImg(deck.cards[0]):null} opacity={.2} blur={24}/>
+      <div style={{position:"relative",background:"rgba(12,14,20,.75)",borderRadius:4,padding:12,margin:-4}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
           {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
           :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
@@ -1087,6 +1088,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{TYPE_ORDER.filter(t=>stats.types[t]).map(t=><span key={t} style={{padding:"2px 7px",borderRadius:4,background:T.cardInner,fontSize:10,color:T.textMuted,fontFamily:F.body}}>{t} {stats.types[t]}</span>)}</div>
         </div>}
       </>}
+      </div>{/* close content backdrop */}
     </div>
 
     {/* Actions */}
