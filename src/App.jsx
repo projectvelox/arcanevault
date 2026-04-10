@@ -1449,6 +1449,48 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
         <button key={id} onClick={()=>setSubTab(id)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,padding:10,borderRadius:3,border:"none",cursor:"pointer",transition:"all .15s",background:subTab===id?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"transparent",color:subTab===id?"#000":T.textDim,fontSize:13,fontWeight:subTab===id?700:500,fontFamily:F.body}}>{icon(subTab===id?"#000":T.textDim)}{label}</button>
       )}
     </div>
+
+    {/* Commander Stats Dashboard */}
+      {decks.some(d=>d.matchLog?.length>0)&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginTop:12,boxShadow:S.cardFrame}}>
+        <div style={{fontSize:10,color:T.purple,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:F.heading}}>Battle Record</div>
+        {(()=>{
+          const allMatches=decks.flatMap(d=>(d.matchLog||[]).map(m=>({...m,deck:d.name,format:d.format})));
+          const totalW=allMatches.filter(m=>m.result==="W").length;
+          const totalL=allMatches.filter(m=>m.result==="L").length;
+          const winRate=totalW+totalL?Math.round((totalW/(totalW+totalL))*100):0;
+          const byDeck={};decks.forEach(d=>{if(d.matchLog?.length)byDeck[d.name]={w:(d.wins||0),l:(d.losses||0),matches:d.matchLog.length}});
+          const bestDeck=Object.entries(byDeck).sort(([,a],[,b])=>(b.w/(b.w+b.l||1))-(a.w/(a.w+a.l||1)))[0];
+          const opponents={};allMatches.forEach(m=>{if(m.vs){if(!opponents[m.vs])opponents[m.vs]={w:0,l:0};if(m.result==="W")opponents[m.vs].w++;else opponents[m.vs].l++}});
+          const topOpps=Object.entries(opponents).sort(([,a],[,b])=>(b.w+b.l)-(a.w+a.l)).slice(0,5);
+          return <>
+            <div style={{display:"flex",gap:12,marginBottom:8}}>
+              <div style={{textAlign:"center",flex:1}}>
+                <div style={{fontSize:24,fontWeight:900,color:winRate>=50?T.green:T.red,fontFamily:F.heading}}>{winRate}%</div>
+                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Win Rate</div>
+              </div>
+              <div style={{textAlign:"center",flex:1}}>
+                <div style={{fontSize:24,fontWeight:900,color:T.text,fontFamily:F.heading}}>{totalW+totalL}</div>
+                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Total Games</div>
+              </div>
+              <div style={{textAlign:"center",flex:1}}>
+                <div style={{fontSize:16,fontWeight:700,color:T.green,fontFamily:F.heading}}>{totalW}W</div>
+                <div style={{fontSize:16,fontWeight:700,color:T.red,fontFamily:F.heading}}>{totalL}L</div>
+              </div>
+            </div>
+            {bestDeck&&<div style={{fontSize:11,color:T.textMuted,fontFamily:F.body,marginBottom:6}}>
+              Best deck: <span style={{color:T.accent,fontWeight:700}}>{bestDeck[0]}</span> ({bestDeck[1].w}W-{bestDeck[1].l}L)
+            </div>}
+            {topOpps.length>0&&<div>
+              <div style={{fontSize:9,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Most Faced Opponents:</div>
+              {topOpps.map(([name,r])=><div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:10,fontFamily:F.body,padding:"2px 0"}}>
+                <span style={{color:T.textMuted}}>{name}</span>
+                <span style={{color:r.w>r.l?T.green:r.w<r.l?T.red:T.textDim}}>{r.w}W-{r.l}L</span>
+              </div>)}
+            </div>}
+          </>;
+        })()}
+      </div>}
+
     {subTab==="decks"&&<DecksList decks={decks} setDecks={setDecks} onOpen={setActiveDeck} toast={toast}/>}
     {subTab==="binder"&&<BinderView coll={coll} setColl={setColl} toast={toast} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder}/>}
   </div>;
