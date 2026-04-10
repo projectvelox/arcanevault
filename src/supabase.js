@@ -256,6 +256,67 @@ export const tradeApi = {
   }
 };
 
+// Deck Sharing
+export const sharingApi = {
+  async shareDeck(deckId) {
+    const shareId = Math.random().toString(36).substring(2, 10);
+    const { data, error } = await supabase.from('decks').update({ is_public: true, share_id: shareId }).eq('id', deckId).select().single();
+    return { data, error, shareId };
+  },
+  async unshareDeck(deckId) {
+    const { error } = await supabase.from('decks').update({ is_public: false, share_id: null }).eq('id', deckId);
+    return { error };
+  },
+  async getSharedDeck(shareId) {
+    if (!supabase) return { data: null };
+    const { data: deck, error } = await supabase.from('decks').select('*').eq('share_id', shareId).eq('is_public', true).single();
+    if (error || !deck) return { data: null, error };
+    const { data: cards } = await supabase.from('deck_cards').select('*').eq('deck_id', deck.id);
+    return { data: { ...deck, cards: (cards || []).map(c => ({ ...c, id: c.scryfall_id, board: c.board || 'main', image_uris: c.image_uris || {}, prices: c.prices || {}, legalities: c.legalities || {}, color_identity: c.color_identity || [] })) } };
+  }
+};
+
+// Price Watchlist
+export const priceApi = {
+  async addSnapshot(card) {
+    const user = await getUser();
+    if (!user) return { error: { message: 'Not authenticated' } };
+    const { data, error } = await supabase.from('price_snapshots').insert({
+      user_id: user.id, scryfall_id: card.id, name: card.name,
+      price_usd: card.prices?.usd ? parseFloat(card.prices.usd) : null,
+      price_foil: card.prices?.usd_foil ? parseFloat(card.prices.usd_foil) : null,
+    }).select().single();
+    return { data, error };
+  },
+  async getSnapshots(scryfallId) {
+    const { data, error } = await supabase.from('price_snapshots').select('*').eq('scryfall_id', scryfallId).order('snapshot_date', { ascending: true });
+    return { data, error };
+  },
+  async getWatchlist() {
+    const { data, error } = await supabase.from('price_snapshots').select('scryfall_id, name, price_usd, snapshot_date').order('snapshot_date', { ascending: false });
+    if (!data) return { data: [], error };
+    // Group by scryfall_id, get latest + oldest for delta
+    const grouped = {};
+    data.forEach(s => {
+      if (!grouped[s.scryfall_id]) grouped[s.scryfall_id] = { name: s.name, latest: s, entries: [] };
+      grouped[s.scryfall_id].entries.push(s);
+    });
+    const watchlist = Object.values(grouped).map(g => ({
+      name: g.name, scryfallId: g.latest.scryfall_id,
+      currentPrice: g.latest.price_usd,
+      oldestPrice: g.entries[g.entries.length - 1]?.price_usd,
+      delta: g.latest.price_usd && g.entries[g.entries.length - 1]?.price_usd
+        ? g.latest.price_usd - g.entries[g.entries.length - 1].price_usd : 0,
+      entries: g.entries.length,
+    }));
+    return { data: watchlist, error };
+  },
+  async removeFromWatchlist(scryfallId) {
+    const { error } = await supabase.from('price_snapshots').delete().eq('scryfall_id', scryfallId);
+    return { error };
+  }
+};
+
 // Profile/Settings
 export const profileApi = {
   async get() {

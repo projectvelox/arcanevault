@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, cardsApi, decksApi, deckCardsApi, tradeApi, profileApi } from "./supabase.js";
+import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, cardsApi, decksApi, deckCardsApi, tradeApi, profileApi, sharingApi, priceApi } from "./supabase.js";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCRYFALL API
@@ -17,6 +17,14 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
+// Global Scryfall rate limiter (50-100ms between requests)
+let _lastScryfallCall = 0;
+async function scryfallThrottle() {
+  const now = Date.now(); const diff = now - _lastScryfallCall;
+  if (diff < 80) await new Promise(r => setTimeout(r, 80 - diff));
+  _lastScryfallCall = Date.now();
+}
+
 async function searchScryfall(query, colors = [], type = "", set = "", extra = {}) {
   let parts = [];
   if (query) parts.push(query);
@@ -29,6 +37,7 @@ async function searchScryfall(query, colors = [], type = "", set = "", extra = {
   if (extra.legality) parts.push(`f:${extra.legality}`);
   if (!parts.length) return { data: [], total: 0 };
   try {
+    await scryfallThrottle();
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(parts.join(" "))}&order=name&unique=${set ? "prints" : "cards"}`);
     if (!res.ok) return { data: [], total: 0 };
     const json = await res.json();
@@ -118,6 +127,35 @@ async function fetchRandomCard() {
   } catch { return null; }
 }
 
+// Image preprocessing for OCR: crop to title bar, grayscale, high contrast
+async function preprocessImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      // Crop to top 18% (title bar region of a standard MTG card)
+      const cropH = Math.round(img.height * 0.18);
+      canvas.width = img.width;
+      canvas.height = cropH;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, img.width, cropH, 0, 0, img.width, cropH);
+      // Convert to grayscale + boost contrast
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const d = imageData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const gray = d[i] * 0.299 + d[i+1] * 0.587 + d[i+2] * 0.114;
+        const contrast = ((gray - 128) * 1.8) + 128; // 1.8x contrast
+        const val = Math.max(0, Math.min(255, contrast));
+        d[i] = d[i+1] = d[i+2] = val;
+      }
+      ctx.putImageData(imageData, 0, 0);
+      canvas.toBlob(resolve, "image/png");
+    };
+    img.onerror = () => resolve(file); // Fallback to original
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 // OCR scanner with worker caching, timeout, and fuzzy correction
 let _ocrWorker = null;
 let _ocrIdleTimer = null;
@@ -138,11 +176,13 @@ function scheduleWorkerCleanup() {
 async function scanCardImage(file) {
   let worker = null;
   try {
+    // Preprocess: crop to title bar + grayscale + contrast
+    const processed = await preprocessImage(file);
     worker = await Promise.race([
       getOcrWorker(),
       new Promise((_, rej) => setTimeout(() => rej(new Error("OCR timeout")), 20000))
     ]);
-    const { data: { text } } = await worker.recognize(file);
+    const { data: { text } } = await worker.recognize(processed || file);
     const rawLine = (text.split("\n").map(l => l.trim()).filter(Boolean))[0] || "";
     if (!rawLine) return "";
     scheduleWorkerCleanup();
@@ -636,9 +676,12 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
           )}
         </div>
         {/* Purchase links */}
-        {/* Price context */}
-        {card.prices?.usd&&<div style={{textAlign:"center",marginTop:4,fontSize:10,fontFamily:F.body,color:T.textDim}}>
-          {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
+        {/* Price context + watchlist */}
+        {card.prices?.usd&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:4}}>
+          <span style={{fontSize:10,fontFamily:F.body,color:T.textDim}}>
+            {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
+          </span>
+          {supabase&&<button onClick={async()=>{await priceApi.addSnapshot(card);toast(`${card.name} added to price watch`)}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
         </div>}
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
           {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
@@ -1518,6 +1561,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
       <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
       <button onClick={fetchSuggestions} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:showSuggest?`${T.purple}15`:"transparent",color:T.purple,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{sugLoading?"...":"Suggest"}</button>
+      {supabase&&user&&<button onClick={async()=>{
+        if(deck.is_public){await sharingApi.unshareDeck(deckId);setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:false,share_id:null}:d));toast("Deck unshared")}
+        else{const{shareId}=await sharingApi.shareDeck(deckId);if(shareId){setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:true,share_id:shareId}:d));navigator.clipboard.writeText(`${window.location.origin}?deck=${shareId}`).then(()=>toast("Share link copied!")).catch(()=>toast(`Share ID: ${shareId}`))}}
+      }} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${deck.is_public?T.green:T.blue}`,background:deck.is_public?`${T.green}15`:"transparent",color:deck.is_public?T.green:T.blue,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{deck.is_public?"Shared":"Share"}</button>}
     </div>
 
     {/* Card suggestions */}
