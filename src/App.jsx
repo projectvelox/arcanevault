@@ -47,6 +47,7 @@ async function searchScryfall(query, colors = [], type = "", set = "", extra = {
 
 async function fetchNextPage(url) {
   try {
+    await scryfallThrottle();
     const res = await fetch(url);
     if (!res.ok) return { data: [], nextPage: null };
     const json = await res.json();
@@ -62,6 +63,7 @@ async function searchCards(query, colors = [], type = "") {
   if (type) parts.push(`t:${type}`);
   if (!parts.length) return [];
   try {
+    await scryfallThrottle();
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(parts.join(" "))}&order=name&unique=cards`);
     if (!res.ok) return [];
     const json = await res.json();
@@ -72,6 +74,7 @@ async function searchCards(query, colors = [], type = "") {
 async function fetchAutocomplete(query) {
   if (query.length < 2) return [];
   try {
+    await scryfallThrottle();
     const res = await fetch(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(query)}`);
     if (!res.ok) return [];
     return (await res.json()).data || [];
@@ -83,12 +86,12 @@ async function fetchSetCards(setCode) {
   let url = `https://api.scryfall.com/cards/search?q=set:${setCode}+is:booster&unique=cards&order=collector_number`;
   try {
     while (url) {
+      await scryfallThrottle();
       const res = await fetch(url);
       if (!res.ok) break;
       const json = await res.json();
       cards.push(...(json.data || []));
       url = json.has_more ? json.next_page : null;
-      if (url) await new Promise(r => setTimeout(r, 80));
     }
   } catch {}
   return cards;
@@ -97,6 +100,7 @@ async function fetchSetCards(setCode) {
 async function fetchRulings(rulingsUri) {
   if (!rulingsUri) return [];
   try {
+    await scryfallThrottle();
     const res = await fetch(rulingsUri);
     if (!res.ok) return [];
     return (await res.json()).data || [];
@@ -105,6 +109,7 @@ async function fetchRulings(rulingsUri) {
 
 async function fetchPrintings(cardName) {
   try {
+    await scryfallThrottle();
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`!"${cardName}"`)}&unique=prints&order=released`);
     if (!res.ok) return [];
     return (await res.json()).data || [];
@@ -113,6 +118,7 @@ async function fetchPrintings(cardName) {
 
 async function fetchSets() {
   try {
+    await scryfallThrottle();
     const res = await fetch("https://api.scryfall.com/sets");
     if (!res.ok) return [];
     return ((await res.json()).data || []).filter(s => ["core","expansion","masters","draft_innovation","funny"].includes(s.set_type)).slice(0, 80);
@@ -121,6 +127,7 @@ async function fetchSets() {
 
 async function fetchRandomCard() {
   try {
+    await scryfallThrottle();
     const res = await fetch("https://api.scryfall.com/cards/random?q=has%3Aflavor+-is%3Adigital+has%3Aart");
     if (!res.ok) return null;
     return await res.json();
@@ -633,7 +640,7 @@ function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CARD SLIDER (universal detail viewer)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function CardSlider({cards,index,onIndexChange,onClose,actions}) {
+function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast}) {
   const [dragX,setDragX]=useState(0);const [dragging,setDragging]=useState(false);
   const [printings,setPrintings]=useState([]);const [showPrintings,setShowPrintings]=useState(false);
   const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
@@ -686,7 +693,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
           <span style={{fontSize:10,fontFamily:F.body,color:T.textDim}}>
             {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
           </span>
-          {supabase&&<button onClick={async()=>{await priceApi.addSnapshot(card);toast(`${card.name} added to price watch`)}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
+          {supabase&&sliderToast&&<button onClick={async()=>{await priceApi.addSnapshot(card);sliderToast(`${card.name} added to price watch`)}} style={{fontSize:9,padding:"2px 8px",borderRadius:4,border:`1px solid ${T.blue}`,background:"transparent",color:T.blue,cursor:"pointer",fontFamily:F.body}}>Watch Price</button>}
         </div>}
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
           {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
@@ -1197,7 +1204,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       <div style={{fontSize:15,fontFamily:F.body}}>The spell fizzles \u2014 no cards found</div>
     </div>}
 
-    {slideIdx>=0&&results[slideIdx]&&<CardSlider cards={results} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
+    {slideIdx>=0&&results[slideIdx]&&<CardSlider cards={results} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={(card)=><div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>{addColl(card);setShowBurst(true);setTimeout(()=>{setShowBurst(false);setSlideIdx(-1)},400)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>+ Collection</button>
@@ -1719,7 +1726,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       </div>
     </div>}
 
-    {slideIdx>=0&&allCards[slideIdx]&&<CardSlider cards={allCards} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
+    {slideIdx>=0&&allCards[slideIdx]&&<CardSlider cards={allCards} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={card=>{const curBoard=card.board||"main";return<div>
         <div style={{display:"flex",gap:6,marginBottom:8}}>
           {curBoard!=="main"&&<button onClick={()=>{moveCard(card.id,curBoard,"main");toast(`Moved to main`);setSlideIdx(-1)}} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Main</button>}
@@ -1888,7 +1895,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       </div>
     </div>)}
 
-    {slideIdx>=0&&items[slideIdx]&&<CardSlider cards={items} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
+    {slideIdx>=0&&items[slideIdx]&&<CardSlider cards={items} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={card=>{const cc=coll.find(c=>c.id===card.id);return<div>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
           <button onClick={()=>{adj(card.id,-1);if((cc?.qty||1)<=1)setSlideIdx(-1)}} style={{width:44,height:44,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
