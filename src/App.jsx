@@ -444,7 +444,11 @@ function getDeckTint(deck) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // THEME & HELPERS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-const fmt = (p) => p ? `$${parseFloat(p).toFixed(2)}` : "\u2014";
+const fmtUsd = (p) => p ? `$${parseFloat(p).toFixed(2)}` : "\u2014";
+const fmtEur = (p) => p ? `\u20ac${parseFloat(p).toFixed(2)}` : "\u2014";
+let _currency = "usd";
+const fmt = (p, eurP) => _currency === "eur" && eurP ? fmtEur(eurP) : fmtUsd(p);
+const getPrice = (card) => _currency === "eur" ? (card?.prices?.eur || card?.prices?.usd) : card?.prices?.usd;
 const MCLR = { W:"#F9FAF4",U:"#0E68AB",B:"#211510",R:"#D3202A",G:"#00733E",C:"#CAC5C0" };
 const MBDR = { W:"#C4B998",U:"#064A7A",B:"#44403C",R:"#9A1620",G:"#005C30",C:"#9E9A96" };
 const MTXT = { W:"#444",U:"#fff",B:"#C9A96E",R:"#fff",G:"#fff",C:"#444" };
@@ -851,6 +855,13 @@ const LANG_LABELS = {en:"English",ja:"Japanese",de:"German",fr:"French",it:"Ital
 
 export default function App() {
   const [tab,setTab]=useState("search");
+  const [sharedDeck,setSharedDeck]=useState(null);
+  // Handle ?deck=shareId deep link
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const shareId=params.get("deck");
+    if(shareId&&supabase){sharingApi.getSharedDeck(shareId).then(({data})=>{if(data)setSharedDeck(data)})}
+  },[]);
   const [decks,setDecks]=useState([]);
   const [binders,setBinders]=useState([{id:"main",name:"Collection",cards:[]},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}]);
   const [activeBinder,setActiveBinder]=useState("main");
@@ -1022,8 +1033,29 @@ export default function App() {
   const hdr={search:["Search","Scry the Multiverse"],vault:["Vault","Decks & Collection"],trade:["Trade","Card Evaluator"]};
 
   const isOled=settings.theme==="oled";
+  _currency=settings.currency||"usd";
   return <div style={{minHeight:"100vh",background:isOled?"#000":S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative",animation:isOled?undefined:"blindEternities 20s ease-in-out infinite"}}>
     <ToastContainer toasts={toasts}/>
+
+    {/* Shared deck viewer (read-only, from deep link) */}
+    {sharedDeck&&<div style={{position:"fixed",inset:0,zIndex:450,background:"rgba(0,0,0,.95)",overflow:"auto",padding:16}}>
+      <div style={{maxWidth:480,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div>
+            <h2 style={{margin:0,fontSize:FS.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{sharedDeck.name}</h2>
+            <div style={{fontSize:FS.secondary,color:T.textDim,fontFamily:F.body}}>{sharedDeck.format} \u2022 {sharedDeck.cards?.length||0} cards</div>
+          </div>
+          <button onClick={()=>{setSharedDeck(null);window.history.replaceState({},"",window.location.pathname)}} style={{padding:"8px 16px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:FS.label,cursor:"pointer",fontFamily:F.body}}>Close</button>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+          {(sharedDeck.cards||[]).filter(c=>c.board==="main"||c.board==="commander").map(c=><div key={c.id+(c.board||"")} style={{position:"relative"}}>
+            <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",borderRadius:4,display:"block"}}/>
+            {c.qty>1&&<div style={{position:"absolute",top:2,right:2,background:T.gold,color:"#000",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
+          </div>)}
+        </div>
+        <button onClick={()=>{const text=exportDeckList(sharedDeck);navigator.clipboard.writeText(text).then(()=>toast("Decklist copied!"))}} style={{width:"100%",marginTop:12,padding:12,borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:FS.body,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Copy Decklist</button>
+      </div>
+    </div>}
     {isOffline&&<div style={{background:"#2A1A0F",padding:"6px 16px",textAlign:"center",fontSize:11,color:"#E8C349",fontFamily:F.body,fontWeight:600,borderBottom:`1px solid #E8C34933`}}>You are offline \u2014 changes saved locally</div>}
     {/* Branded header with filigree */}
     <div style={{padding:"14px 18px 10px",flexShrink:0,background:`linear-gradient(180deg, ${T.surface} 0%, transparent 100%)`,borderBottom:"1px solid transparent",borderImage:S.filigree,borderImageSlice:1,display:"flex",alignItems:"center",gap:10}}>
@@ -1081,6 +1113,9 @@ export default function App() {
           <button onClick={()=>{setAuthMode(authMode==="signup"?"signin":"signup");setAuthError("")}} style={{background:"none",border:"none",color:T.gold,fontSize:12,cursor:"pointer",fontFamily:F.body,textDecoration:"underline"}}>
             {authMode==="signup"?"Already have an account? Sign in":"Don't have an account? Sign up"}
           </button>
+          {authMode==="signin"&&<button onClick={async()=>{const email=prompt("Enter your email for password reset:");if(email&&supabase){const{error}=await supabase.auth.resetPasswordForEmail(email);toast(error?error.message:"Reset email sent!")}}} style={{background:"none",border:"none",color:T.textDim,fontSize:FS.label,cursor:"pointer",fontFamily:F.body,textDecoration:"underline",marginTop:4,display:"block",margin:"4px auto"}}>
+            Forgot password?
+          </button>}
         </div>
         <button onClick={()=>setAuthMode(null)} style={{display:"block",margin:"10px auto 0",background:"none",border:"none",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Continue without account</button>
       </div>
@@ -1134,6 +1169,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
   const [browseSet,setBrowseSet]=useState(null);const [setCards,setSetCards]=useState([]);const [sLoading,setSLoading]=useState(false);
   const [nextPage,setNextPage]=useState(null);const [loadingMore,setLoadingMore]=useState(false);
+  const [sortResults,setSortResults]=useState("name");
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const [showBurst,setShowBurst]=useState(false);
@@ -1163,6 +1199,14 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   },[dQ,dC,dT,dS,dR,dCmc,dOT]);
 
   const hasQuery=q||colors.length||type||set||rarity||cmcOp||oText;
+  const sortedResults=useMemo(()=>{
+    if(sortResults==="name"||!results.length)return results;
+    const s=[...results];
+    if(sortResults==="price")s.sort((a,b)=>(parseFloat(b.prices?.usd||0))-(parseFloat(a.prices?.usd||0)));
+    else if(sortResults==="cmc")s.sort((a,b)=>(a.cmc||0)-(b.cmc||0));
+    else if(sortResults==="edhrec")s.sort((a,b)=>(a.edhrec_rank||99999)-(b.edhrec_rank||99999));
+    return s;
+  },[results,sortResults]);
 
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];if(!file)return;
@@ -1206,7 +1250,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
       <div style={{display:"flex",gap:8}}>
         <div style={{position:"relative",flex:1}}>
-          <input aria-label="Search cards" value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell... (try o:draw or t:angel)" style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <input aria-label="Search cards" value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} onKeyDown={e=>{if(e.key==="Enter")e.target.blur()}} enterKeyHint="search" placeholder="Search cards..." style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
           <span style={{position:"absolute",left:14,top:14,opacity:.4}}>{I.search(T.textDim)}</span>
           {autocomplete.length>0&&acFocused&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:T.surface,border:`1px solid ${T.cardBorder}`,borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,.5)",maxHeight:200,overflowY:"auto"}}>
             {autocomplete.slice(0,8).map(name=><div key={name} onMouseDown={()=>{setQ(name);setAutocomplete([])}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.text,fontFamily:F.body,borderBottom:`1px solid ${T.cardBorder}`}}>{name}</div>)}
@@ -1221,6 +1265,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         <select value={set} onChange={e=>{setSet(e.target.value);if(e.target.value){setBrowseSet(null)}}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
         {set&&<button onClick={async()=>{if(browseSet===set){setBrowseSet(null);return;}setBrowseSet(set);setSLoading(true);const c=await fetchSetCards(set);setSetCards(c);setSLoading(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${browseSet?T.gold:T.cardBorder}`,background:browseSet?T.goldGlow:"transparent",color:browseSet?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>{sLoading?"...":"Checklist"}</button>}
         {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("");setRarity("");setCmcOp("");setOText("");setShowAdv(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
+        <select value={sortResults} onChange={e=>setSortResults(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:34,textAlign:"center"}}><option value="name">Name</option><option value="price">Price</option><option value="cmc">MV</option><option value="edhrec">Popular</option></select>
         <button onClick={()=>setShowAdv(!showAdv)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${showAdv||(rarity||cmcOp||oText)?T.gold+"66":T.cardBorder}`,background:showAdv?T.goldGlow:"transparent",color:showAdv||rarity||cmcOp||oText?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>More</button>
       </div>
       {showAdv&&<div style={{display:"flex",gap:6,marginTop:6,overflowX:"auto",alignItems:"center",paddingBottom:4}}>
@@ -1281,7 +1326,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     {loading&&results.length===0&&<SkeletonGrid count={6}/>}
 
     {(!loading||results.length>0)&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,paddingTop:4,paddingBottom:16}}>
-      {results.map((card,i)=>{const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;return(
+      {sortedResults.map((card,i)=>{const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;return(
         <div key={card.id} onClick={()=>{setSlideIdx(i);setShowAdd(false)}} style={{borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${T.cardBorder}`,cursor:"pointer",boxShadow:card.rarity==="mythic"?`inset 0 0 0 1px #F0683444, 0 0 12px #F0683422, 0 2px 8px rgba(0,0,0,.4)`:card.rarity==="rare"?`0 0 0 1px #E8C34944, 0 2px 8px #E8C34933`:S.cardFrame,backgroundImage:S.texture,borderTop:`2px solid ${card.rarity!=="common"?rc:T.cardBorder}`,animation:card.rarity==="mythic"?"mythicPulse 2.5s ease-in-out infinite":undefined,transition:"transform .15s",WebkitTapHighlightColor:"transparent"}}>
           <img src={getImg(card)} alt={card.name} loading="lazy" style={{width:"100%",display:"block"}}/>
           <div style={{padding:"8px 10px 10px"}}>
@@ -1727,7 +1772,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
           :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
           <div style={{display:"flex",gap:8,fontSize:12,color:T.textDim,fontFamily:F.body,flexWrap:"wrap",alignItems:"center"}}>
-            <span>{deck.format[0].toUpperCase()+deck.format.slice(1)}</span>
+            <select value={deck.format} onChange={e=>setDecks(p=>p.map(d=>d.id===deckId?{...d,format:e.target.value}:d))} style={{background:"transparent",border:"none",color:T.textDim,fontSize:12,fontFamily:F.body,cursor:"pointer",padding:0}}>{Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
             <span>{stats.mainN} main{stats.sideN>0?` / ${stats.sideN} side`:""}</span>
             <span style={{color:T.green,fontWeight:700}}>{fmt(stats.val.toFixed(2))}</span>
             <span>Avg MV: {stats.avgMv.toFixed(1)}</span>
