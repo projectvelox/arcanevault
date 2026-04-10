@@ -1140,7 +1140,7 @@ export default function App() {
     <div style={{flex:1,overflowY:"auto",paddingBottom:72}}>
       <div key={tab} style={{animation:"fadeSlideIn .25s ease-out"}}>
       {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast} allCollCards={allCollCards}/>}
-      {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards}/>}
+      {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards} isOnline={isOnline} user={user}/>}
       {tab==="trade"&&<TradeView toast={toast}/>}
       </div>
     </div>
@@ -1394,7 +1394,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // VAULT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setActiveBinder,toast,allCollCards}) {
+function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setActiveBinder,toast,allCollCards,isOnline,user}) {
   const [subTab,setSubTab]=useState("decks");const [activeDeck,setActiveDeck]=useState(null);
   const coll=useMemo(()=>(binders.find(b=>b.id===activeBinder)?.cards||[]),[binders,activeBinder]);
   const setColl=useCallback((fn)=>setBinders(p=>p.map(b=>b.id===activeBinder?{...b,cards:typeof fn==="function"?fn(b.cards):fn}:b)),[activeBinder,setBinders]);
@@ -1414,7 +1414,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
     return{totalCards,totalValue,uniqueCards,sets:sets.size,colorCounts,topColor,priciest,foilCount,deckCount:decks.length,binderCount:binders.length};
   },[binders,decks]);
 
-  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll} allCollCards={allCollCards}/>;
+  if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll} allCollCards={allCollCards} isOnline={isOnline} user={user}/>;
 
   const vs=vaultStats;
   const totalClrsV=Object.values(vs.colorCounts).reduce((a,b)=>a+b,0)||1;
@@ -1656,7 +1656,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DECK EDITOR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCards}) {
+function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCards,isOnline,user}) {
   const [addQ,setAddQ]=useState("");const [addColors,setAddColors]=useState([]);const [addType,setAddType]=useState("");
   const [addResults,setAddResults]=useState([]);const [viewMode,setViewMode]=useState("visual");
   const [showSim,setShowSim]=useState(false);const [showImport,setShowImport]=useState(false);
