@@ -690,11 +690,19 @@ export default function App() {
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
   const [showSettings,setShowSettings]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(false);
+  const [isOffline,setIsOffline]=useState(!navigator.onLine);
   const [user,setUser]=useState(null);
   const [authMode,setAuthMode]=useState(null); // null=hidden, "signin", "signup"
   const [authLoading,setAuthLoading]=useState(false);
   const [authError,setAuthError]=useState("");
   const isOnline=useRef(!!user);isOnline.current=!!user;
+
+  // Online/offline detector
+  useEffect(()=>{
+    const on=()=>setIsOffline(false);const off=()=>setIsOffline(true);
+    window.addEventListener("online",on);window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off)};
+  },[]);
 
   // Auth state listener
   useEffect(()=>{
@@ -732,7 +740,7 @@ export default function App() {
   },[user]);
   useEffect(()=>{
     if(ready&&!user)store.set("av-settings",settings);
-    if(user)profileApi.update({settings});
+    if(user)profileApi.update({settings}).catch(()=>{});
   },[settings,ready,user]);
 
   // Load data: Supabase if logged in, IndexedDB if not
@@ -845,6 +853,7 @@ export default function App() {
   const isOled=settings.theme==="oled";
   return <div style={{minHeight:"100vh",background:isOled?"#000":S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative",animation:isOled?undefined:"blindEternities 20s ease-in-out infinite"}}>
     <ToastContainer toasts={toasts}/>
+    {isOffline&&<div style={{background:"#2A1A0F",padding:"6px 16px",textAlign:"center",fontSize:11,color:"#E8C349",fontFamily:F.body,fontWeight:600,borderBottom:`1px solid #E8C34933`}}>You are offline \u2014 changes saved locally</div>}
     {/* Branded header with filigree */}
     <div style={{padding:"14px 18px 10px",flexShrink:0,background:`linear-gradient(180deg, ${T.surface} 0%, transparent 100%)`,borderBottom:"1px solid transparent",borderImage:S.filigree,borderImageSlice:1,display:"flex",alignItems:"center",gap:10}}>
       <div style={{width:32,height:32,borderRadius:8,background:`linear-gradient(135deg, ${T.gold}, ${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:S.goldGlow,flexShrink:0}}>
@@ -997,6 +1006,10 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       {scanPreview&&<img src={scanPreview} alt="scan" style={{maxWidth:"70%",maxHeight:"40vh",borderRadius:12,border:`2px solid ${T.gold}`}}/>}
       <div style={{fontSize:15,color:T.gold,fontWeight:600,fontFamily:F.body}}>{scanStatus}</div>
       <div style={{width:120,height:3,borderRadius:2,background:T.cardBorder,overflow:"hidden"}}><div style={{width:"70%",height:"100%",background:T.gold,borderRadius:2,animation:"pulse 1s ease-in-out infinite alternate"}}/></div>
+      <div style={{display:"flex",gap:10,marginTop:8}}>
+        <button onClick={()=>fileRef.current?.click()} style={{padding:"10px 20px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Retry</button>
+        <button onClick={()=>{setScanning(false);setScanPreview(null)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Cancel</button>
+      </div>
     </div>}
 
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
@@ -1656,7 +1669,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiveBinder}) {
   const [filter,setFilter]=useState("");const [sort,setSort]=useState("name");const [view,setView]=useState("list");
-  const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");const [fSet,setFSet]=useState("");
+  const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");const [fSet,setFSet]=useState("");const [fMinPrice,setFMinPrice]=useState("");
   const [slideIdx,setSlideIdx]=useState(-1);const [showFilters,setShowFilters]=useState(false);
   const [showNewBinder,setShowNewBinder]=useState(false);const [newBinderName,setNewBinderName]=useState("");
   const [selectMode,setSelectMode]=useState(false);const [selected,setSelected]=useState(new Set());
@@ -1690,12 +1703,13 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     if(fType)r=r.filter(c=>(c.type_line||"").toLowerCase().includes(fType));
     if(fRarity)r=r.filter(c=>c.rarity===fRarity);
     if(fSet)r=r.filter(c=>(c.set||c.set_code||"")===fSet);
+    if(fMinPrice)r=r.filter(c=>parseFloat(c.prices?.usd||0)>=parseFloat(fMinPrice));
     r.sort((a,b)=>{if(sort==="name")return a.name.localeCompare(b.name);if(sort==="price")return(parseFloat(b.prices?.usd||0))-(parseFloat(a.prices?.usd||0));if(sort==="recent")return(b.addedAt||0)-(a.addedAt||0);return 0});
     return r;
-  },[coll,filter,sort,fColors,fType,fRarity]);
+  },[coll,filter,sort,fColors,fType,fRarity,fSet,fMinPrice]);
 
   const adj=(id,d)=>setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
-  const hasFilters=fColors.length||fType||fRarity||fSet;
+  const hasFilters=fColors.length||fType||fRarity||fSet||fMinPrice;
   const collSets=useMemo(()=>[...new Set(coll.map(c=>c.set||c.set_code).filter(Boolean))].sort(),[coll]);
 
   return <>
@@ -1760,7 +1774,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       <TypeSelect type={fType} setType={setFType} h={30}/>
       <select value={fRarity} onChange={e=>setFRarity(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">All rarities</option>{["common","uncommon","rare","mythic"].map(r=><option key={r} value={r}>{r[0].toUpperCase()+r.slice(1)}</option>)}</select>
       {collSets.length>1&&<select value={fSet} onChange={e=>setFSet(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">All sets</option>{collSets.map(s=><option key={s} value={s}>{s.toUpperCase()}</option>)}</select>}
-      {hasFilters&&<button onClick={()=>{setFColors([]);setFType("");setFRarity("");setFSet("")}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,fontFamily:F.body}}>Clear</button>}
+      <select value={fMinPrice} onChange={e=>setFMinPrice(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">Min $</option><option value="1">$1+</option><option value="5">$5+</option><option value="10">$10+</option><option value="20">$20+</option><option value="50">$50+</option></select>
+      {hasFilters&&<button onClick={()=>{setFColors([]);setFType("");setFRarity("");setFSet("");setFMinPrice("")}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,fontFamily:F.body}}>Clear</button>}
     </div>}
 
     {coll.length===0?<div style={{textAlign:"center",padding:"48px 20px",color:T.textDim}}>
