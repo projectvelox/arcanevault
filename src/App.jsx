@@ -1252,21 +1252,31 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const deck=decks.find(d=>d.id===deckId); if(!deck) return null;
   const tint=getDeckTint(deck);
 
-  const rmCard=(cid,board)=>setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const c=d.cards.find(x=>x.id===cid&&x.board===board);if(!c)return d;return c.qty>1?{...d,cards:d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)}:{...d,cards:d.cards.filter(x=>x!==c)}}));
+  const rmCard=(cid,board)=>{
+    setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const c=d.cards.find(x=>x.id===cid&&x.board===board);if(!c)return d;return c.qty>1?{...d,cards:d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)}:{...d,cards:d.cards.filter(x=>x!==c)}}));
+    if(isOnline.current)enqueueWrite(()=>deckCardsApi.remove(deckId,cid,board));
+  };
 
-  const moveCard=(cid,fromBoard,toBoard)=>setDecks(p=>p.map(d=>{
-    if(d.id!==deckId)return d;
-    const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
-    const existing=d.cards.find(x=>x.id===cid&&x.board===toBoard);
-    let cards=d.cards.filter(x=>x!==c);
-    if(c.qty>1) cards=[...d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)];
-    if(existing) cards=cards.map(x=>x===existing?{...x,qty:x.qty+1}:x);
-    else cards=[...cards,{...c,qty:1,board:toBoard}];
-    return{...d,cards};
-  }));
+  const moveCard=(cid,fromBoard,toBoard)=>{
+    setDecks(p=>p.map(d=>{
+      if(d.id!==deckId)return d;
+      const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
+      const existing=d.cards.find(x=>x.id===cid&&x.board===toBoard);
+      let cards=d.cards.filter(x=>x!==c);
+      if(c.qty>1) cards=[...d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)];
+      if(existing) cards=cards.map(x=>x===existing?{...x,qty:x.qty+1}:x);
+      else cards=[...cards,{...c,qty:1,board:toBoard}];
+      return{...d,cards};
+    }));
+    if(isOnline.current)enqueueWrite(()=>deckCardsApi.move(deckId,cid,fromBoard,toBoard));
+  };
 
-  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`)};
-  const updateNotes=(text)=>setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
+  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`);
+    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{name:newName.trim()}));
+  };
+  const updateNotes=(text)=>{setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
+    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{notes:text}));
+  };
 
   const stats=useMemo(()=>{
     const main=deck.cards.filter(c=>c.board==="main"||c.board==="commander");
@@ -1551,7 +1561,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const selectAll=()=>setSelected(new Set(items.map(c=>c.id)));
   const bulkDelete=()=>{setColl(p=>p.filter(c=>!selected.has(c.id)));toast(`Removed ${selected.size} cards`,"error");setSelected(new Set());setSelectMode(false)};
   const bulkMoveTo=(targetId)=>{const toMove=coll.filter(c=>selected.has(c.id));setBinders(p=>p.map(b=>{if(b.id===activeBinder)return{...b,cards:b.cards.filter(c=>!selected.has(c.id))};if(b.id===targetId)return{...b,cards:[...b.cards,...toMove]};return b}));toast(`Moved ${selected.size} cards`);setSelected(new Set());setSelectMode(false)};
-  const editCardMeta=(cardId,field,value)=>setColl(p=>p.map(c=>c.id===cardId?{...c,[field]:value}:c));
+  const editCardMeta=(cardId,field,value)=>{setColl(p=>p.map(c=>c.id===cardId?{...c,[field]:value}:c));if(supabase)enqueueWrite(()=>cardsApi.update(cardId,{[field]:value}))};
   const handleExportCSV=()=>{const csv=exportCollectionCSV(coll);navigator.clipboard.writeText(csv).then(()=>toast("CSV copied to clipboard")).catch(()=>window.prompt("Copy:",csv))};
   const handleImportColl=async()=>{
     const entries=parseCollectionCSV(importCollText);
