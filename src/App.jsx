@@ -611,7 +611,7 @@ function useToast() {
 }
 function ToastContainer({ toasts }) {
   if (!toasts.length) return null;
-  return <div style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",flexDirection:"column",gap:6,width:"90%",maxWidth:400,pointerEvents:"none"}}>
+  return <div role="status" aria-live="polite" style={{position:"fixed",top:12,left:"50%",transform:"translateX(-50%)",zIndex:500,display:"flex",flexDirection:"column",gap:6,width:"90%",maxWidth:400,pointerEvents:"none"}}>
     {toasts.map(t => <div key={t.id} style={{padding:"10px 16px",borderRadius:12,display:"flex",alignItems:"center",gap:8,background:t.type==="success"?"#0F2A1A":t.type==="error"?"#2A0F0F":T.surface,border:`1px solid ${t.type==="success"?T.green+"44":t.type==="error"?T.red+"44":T.cardBorder}`,color:t.type==="success"?T.green:t.type==="error"?T.red:T.text,fontSize:13,fontWeight:600,fontFamily:F.body,boxShadow:"0 4px 20px rgba(0,0,0,.5)",animation:"toastIn .25s ease-out"}}>{t.type==="success"&&I.check(T.green)}{t.msg}</div>)}
   </div>;
 }
@@ -643,7 +643,7 @@ function BottomSheet({open,onClose,children}) {
 }
 function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.red,onConfirm,onCancel}) {
   if (!open) return null;
-  return <div style={{position:"fixed",inset:0,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:32}} onClick={onCancel}>
+  return <div role="dialog" aria-modal="true" aria-label={title} style={{position:"fixed",inset:0,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:32}} onClick={onCancel}>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.7)"}}/>
     <div onClick={e=>e.stopPropagation()} style={{position:"relative",background:T.surface,borderRadius:16,padding:24,maxWidth:320,width:"100%",border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame,animation:"toastIn .2s ease-out"}}>
       <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{title}</div>
@@ -1024,13 +1024,13 @@ export default function App() {
     </div>
 
     {/* Nav with filigree top border */}
-    <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"linear-gradient(0deg, #0A0C12 0%, rgba(12,14,20,.97) 100%)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:"1px solid transparent",borderImage:S.filFaint,borderImageSlice:1,display:"flex",padding:"8px 0 env(safe-area-inset-bottom,8px)",zIndex:100}}>
+    <nav role="navigation" aria-label="Main navigation" style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,background:"linear-gradient(0deg, #0A0C12 0%, rgba(12,14,20,.97) 100%)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",borderTop:"1px solid transparent",borderImage:S.filFaint,borderImageSlice:1,display:"flex",padding:"8px 0 env(safe-area-inset-bottom,8px)",zIndex:100}}>
       {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",padding:"4px 0",transition:"all .15s",position:"relative"}}>
         {tab===t.id&&<div style={{position:"absolute",top:-6,left:"15%",right:"15%",height:12,background:`radial-gradient(ellipse at 50% 100%, ${T.gold}88 0%, transparent 70%)`,filter:"blur(4px)",opacity:.6}}/>}
         <span style={{lineHeight:0}}>{t.icon(tab===t.id?T.gold:T.textDim)}</span>
         <span style={{fontSize:10,fontWeight:tab===t.id?700:500,letterSpacing:.5,color:tab===t.id?T.gold:T.textDim,fontFamily:F.body}}>{t.label}</span>
       </button>)}
-    </div>
+    </nav>
   </div>;
 }
 

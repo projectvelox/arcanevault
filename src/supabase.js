@@ -167,8 +167,11 @@ export const deckCardsApi = {
   async add(deckId, card, board = 'main') {
     const user = await getUser();
     if (!user) return { error: { message: 'Not authenticated' } };
-    // Check if card already exists in this board
-    const { data: existing } = await supabase.from('deck_cards').select('*').eq('deck_id', deckId).eq('scryfall_id', card.id).eq('board', board).single();
+    // Atomic increment: try update first, insert if no rows affected
+    const { data: updated, error: updErr } = await supabase.rpc('increment_deck_card_qty', { p_deck_id: deckId, p_scryfall_id: card.id, p_board: board }).single();
+    // If RPC doesn't exist or no match, fall back to read-then-write
+    if (!updErr && updated) return { data: updated, error: null };
+    const { data: existing } = await supabase.from('deck_cards').select('id,qty').eq('deck_id', deckId).eq('scryfall_id', card.id).eq('board', board).maybeSingle();
     if (existing) {
       return await supabase.from('deck_cards').update({ qty: existing.qty + 1 }).eq('id', existing.id).select().single();
     }
@@ -259,7 +262,7 @@ export const tradeApi = {
 // Deck Sharing
 export const sharingApi = {
   async shareDeck(deckId) {
-    const shareId = Math.random().toString(36).substring(2, 10);
+    const shareId = crypto.randomUUID().substring(0, 12);
     const { data, error } = await supabase.from('decks').update({ is_public: true, share_id: shareId }).eq('id', deckId).select().single();
     return { data, error, shareId };
   },
