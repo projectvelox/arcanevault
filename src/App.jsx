@@ -226,15 +226,45 @@ function validateDeck(deck) {
     const nonLandMain = deck.cards.filter(c => (c.board === "main" || c.board === "commander") && !(c.type_line || "").toLowerCase().includes("land"));
     if (compName.includes("lurrus")) {
       const violations = nonLandMain.filter(c => c.cmc > 2 && (c.type_line || "").match(/creature|artifact|enchantment/i));
-      if (violations.length) warnings.push({ msg: `Lurrus: ${violations.length} permanents with MV>2 (${violations.slice(0,2).map(c=>c.name).join(", ")})`, severity: "error" });
+      if (violations.length) warnings.push({ msg: `Lurrus: ${violations.length} permanents with MV>2`, severity: "error" });
     }
     if (compName.includes("yorion")) {
-      const mainCount = deck.cards.filter(c => c.board === "main").reduce((a, c) => a + c.qty, 0);
-      if (mainCount < 80) warnings.push({ msg: `Yorion requires 80+ cards in main (have ${mainCount})`, severity: "error" });
+      const mc = deck.cards.filter(c => c.board === "main").reduce((a, c) => a + c.qty, 0);
+      if (mc < 80) warnings.push({ msg: `Yorion requires 80+ cards (have ${mc})`, severity: "error" });
     }
     if (compName.includes("kaheera")) {
-      const nonType = nonLandMain.filter(c => (c.type_line || "").toLowerCase().includes("creature") && !["cat","elemental","nightmare","dinosaur","beast"].some(t => (c.type_line || "").toLowerCase().includes(t)));
-      if (nonType.length) warnings.push({ msg: `Kaheera: ${nonType.length} creatures outside allowed types`, severity: "error" });
+      const bad = nonLandMain.filter(c => (c.type_line||"").toLowerCase().includes("creature") && !["cat","elemental","nightmare","dinosaur","beast"].some(t => (c.type_line||"").toLowerCase().includes(t)));
+      if (bad.length) warnings.push({ msg: `Kaheera: ${bad.length} invalid creature types`, severity: "error" });
+    }
+    if (compName.includes("obosh")) {
+      const bad = nonLandMain.filter(c => c.cmc > 0 && c.cmc % 2 === 0);
+      if (bad.length) warnings.push({ msg: `Obosh: ${bad.length} cards with even MV`, severity: "error" });
+    }
+    if (compName.includes("gyruda")) {
+      const bad = nonLandMain.filter(c => c.cmc > 0 && c.cmc % 2 !== 0);
+      if (bad.length) warnings.push({ msg: `Gyruda: ${bad.length} cards with odd MV`, severity: "error" });
+    }
+    if (compName.includes("keruga")) {
+      const bad = nonLandMain.filter(c => c.cmc < 3 && c.cmc > 0);
+      if (bad.length) warnings.push({ msg: `Keruga: ${bad.length} nonland cards with MV<3`, severity: "error" });
+    }
+    if (compName.includes("umori")) {
+      const types = new Set(nonLandMain.map(c => {const tl=(c.type_line||"").toLowerCase();return ["creature","artifact","enchantment","instant","sorcery","planeswalker"].find(t=>tl.includes(t))||"other"}));
+      if (types.size > 1) warnings.push({ msg: `Umori: deck has ${types.size} card types (need 1)`, severity: "error" });
+    }
+    if (compName.includes("jegantha")) {
+      const bad = nonLandMain.filter(c => {const mc=c.mana_cost||"";const pips=(mc.match(/\{[WUBRGC]\}/g)||[]).map(p=>p[1]);return pips.length>0&&pips.some(p=>pips.filter(x=>x===p).length>1)});
+      if (bad.length) warnings.push({ msg: `Jegantha: ${bad.length} cards with repeated mana symbols`, severity: "error" });
+    }
+    if (compName.includes("zirda")) {
+      const bad = nonLandMain.filter(c => !(c.oracle_text||"").includes("activate") && !(c.oracle_text||"").includes("cycling") && (c.type_line||"").match(/creature|artifact|enchantment/i));
+      // Zirda check is approximate — full validation needs activated ability detection
+    }
+    if (compName.includes("lutri")) {
+      const names = {};
+      nonLandMain.forEach(c => {names[c.name]=(names[c.name]||0)+c.qty});
+      const dupes = Object.entries(names).filter(([,n])=>n>1);
+      if (dupes.length) warnings.push({ msg: `Lutri: ${dupes.length} cards with 2+ copies`, severity: "error" });
     }
   }
 
@@ -1284,7 +1314,14 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     main.forEach(c=>{const cmc=Math.min(Math.floor(c.cmc||0),7);curve[cmc]=(curve[cmc]||0)+c.qty;(c.mana_cost?.match(/\{([WUBRGC])\}/g)||[]).forEach(m=>{const s=m[1];clrs[s]=(clrs[s]||0)+c.qty});types[typeCategory(c.type_line)]=(types[typeCategory(c.type_line)]||0)+c.qty;if(c.prices?.usd)val+=parseFloat(c.prices.usd)*c.qty});
     const total=deck.cards.reduce((a,c)=>a+c.qty,0);const mainN=main.reduce((a,c)=>a+c.qty,0);
     const avgMv=mainN?main.reduce((a,c)=>a+(c.cmc||0)*c.qty,0)/mainN:0;
-    return{curve,clrs,types,val,total,avgMv,mainN,sideN:deck.cards.filter(c=>c.board==="sideboard").reduce((a,c)=>a+c.qty,0)};
+    const lands=main.filter(c=>(c.type_line||"").toLowerCase().includes("land")).reduce((a,c)=>a+c.qty,0);
+    const landPct=mainN?Math.round((lands/mainN)*100):0;
+    // Recommended lands based on avg MV (Frank Karsten formula simplified)
+    const recLands=Math.round(19.59+(1.9*avgMv));
+    const recLandPct=mainN?Math.round((recLands/Math.max(mainN,60))*100):40;
+    // Draw probability: chance of drawing at least 1 copy in opening 7
+    const drawProb=(copies,deckSize,hand=7)=>{if(!copies||!deckSize||copies>deckSize)return 0;let miss=1;for(let i=0;i<hand;i++)miss*=(deckSize-copies-i)/(deckSize-i);return Math.round((1-miss)*100)};
+    return{curve,clrs,types,val,total,avgMv,mainN,sideN:deck.cards.filter(c=>c.board==="sideboard").reduce((a,c)=>a+c.qty,0),lands,landPct,recLands,recLandPct,drawProb};
   },[deck]);
 
   const warnings=useMemo(()=>validateDeck(deck),[deck]);
@@ -1374,6 +1411,15 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
         {Object.keys(stats.types).length>0&&<div>
           <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Types</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{TYPE_ORDER.filter(t=>stats.types[t]).map(t=><span key={t} style={{padding:"2px 7px",borderRadius:4,background:T.cardInner,fontSize:10,color:T.textMuted,fontFamily:F.body}}>{t} {stats.types[t]}</span>)}</div>
+        </div>}
+        {/* Land ratio */}
+        {stats.mainN>0&&<div style={{marginTop:8}}>
+          <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Mana Base</div>
+          <div style={{display:"flex",gap:8,alignItems:"center",fontSize:11,fontFamily:F.body}}>
+            <span style={{color:T.text}}>{stats.lands} lands ({stats.landPct}%)</span>
+            <span style={{color:Math.abs(stats.lands-stats.recLands)<=2?T.green:stats.lands<stats.recLands?T.red:"#E8C349"}}>{stats.lands<stats.recLands?`Need ~${stats.recLands-stats.lands} more`:stats.lands>stats.recLands+3?`${stats.lands-stats.recLands} over recommended`:"On target"}</span>
+            <span style={{color:T.textDim,fontSize:10}}>Rec: ~{stats.recLands}</span>
+          </div>
         </div>}
       </>}
       </div>{/* close content backdrop */}
@@ -1508,6 +1554,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
             <span style={{fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            <span style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>{stats.drawProb(c.qty,stats.mainN)}%</span>
             <span style={{fontSize:11,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
             <button onClick={e=>{e.stopPropagation();rmCard(c.id,board)}} style={{width:28,height:28,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           </div>
@@ -1545,7 +1592,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiveBinder}) {
   const [filter,setFilter]=useState("");const [sort,setSort]=useState("name");const [view,setView]=useState("list");
-  const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");
+  const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");const [fSet,setFSet]=useState("");
   const [slideIdx,setSlideIdx]=useState(-1);const [showFilters,setShowFilters]=useState(false);
   const [showNewBinder,setShowNewBinder]=useState(false);const [newBinderName,setNewBinderName]=useState("");
   const [selectMode,setSelectMode]=useState(false);const [selected,setSelected]=useState(new Set());
@@ -1578,12 +1625,14 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     if(fColors.length)r=r.filter(c=>{const ci=c.color_identity||[];return fColors.every(fc=>ci.includes(fc))});
     if(fType)r=r.filter(c=>(c.type_line||"").toLowerCase().includes(fType));
     if(fRarity)r=r.filter(c=>c.rarity===fRarity);
+    if(fSet)r=r.filter(c=>(c.set||c.set_code||"")===fSet);
     r.sort((a,b)=>{if(sort==="name")return a.name.localeCompare(b.name);if(sort==="price")return(parseFloat(b.prices?.usd||0))-(parseFloat(a.prices?.usd||0));if(sort==="recent")return(b.addedAt||0)-(a.addedAt||0);return 0});
     return r;
   },[coll,filter,sort,fColors,fType,fRarity]);
 
   const adj=(id,d)=>setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
-  const hasFilters=fColors.length||fType||fRarity;
+  const hasFilters=fColors.length||fType||fRarity||fSet;
+  const collSets=useMemo(()=>[...new Set(coll.map(c=>c.set||c.set_code).filter(Boolean))].sort(),[coll]);
 
   return <>
     {/* Binder selector */}
@@ -1646,7 +1695,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       <ColorPills colors={fColors} setColors={setFColors} size={28}/>
       <TypeSelect type={fType} setType={setFType} h={30}/>
       <select value={fRarity} onChange={e=>setFRarity(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">All rarities</option>{["common","uncommon","rare","mythic"].map(r=><option key={r} value={r}>{r[0].toUpperCase()+r.slice(1)}</option>)}</select>
-      {hasFilters&&<button onClick={()=>{setFColors([]);setFType("");setFRarity("")}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,fontFamily:F.body}}>Clear</button>}
+      {collSets.length>1&&<select value={fSet} onChange={e=>setFSet(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">All sets</option>{collSets.map(s=><option key={s} value={s}>{s.toUpperCase()}</option>)}</select>}
+      {hasFilters&&<button onClick={()=>{setFColors([]);setFType("");setFRarity("");setFSet("")}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,fontFamily:F.body}}>Clear</button>}
     </div>}
 
     {coll.length===0?<div style={{textAlign:"center",padding:"48px 20px",color:T.textDim}}>
