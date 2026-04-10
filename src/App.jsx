@@ -783,7 +783,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
       </div>
       {/* Color identity breakdown */}
       {totalClrsV>1&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
-        <div style={{fontSize:10,color:T.textDim,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Your Color Identity</div>
+        <div style={{fontSize:10,color:T.textMuted,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Your Color Identity</div>
         <div style={{display:"flex",gap:0,height:10,borderRadius:5,overflow:"hidden",marginBottom:8}}>
           {Object.entries(vs.colorCounts).filter(([,n])=>n>0).map(([c,n])=><div key={c} style={{width:`${(n/totalClrsV)*100}%`,background:MCLR[c],height:"100%"}}/>)}
         </div>
@@ -996,13 +996,13 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       </div>
 
       {warnings.filter(w=>w.severity!=="ok").length>0&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:3}}>
-        {warnings.filter(w=>w.severity!=="ok").map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:600,color:w.severity==="error"?T.red:"#E8C349",padding:"4px 8px",borderRadius:4,background:w.severity==="error"?"#2A0F0F22":"#2A2A0F22",fontFamily:F.body}}>{I.warn(w.severity==="error"?T.red:"#E8C349")} {w.msg}</div>)}
+        {warnings.filter(w=>w.severity!=="ok").map((w,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:600,color:w.severity==="error"?T.red:"#E8C349",padding:"4px 8px",borderRadius:4,background:w.severity==="error"?"#2A0F0Faa":"#2A2A0Faa",fontFamily:F.body}}>{I.warn(w.severity==="error"?T.red:"#E8C349")} {w.msg}</div>)}
       </div>}
-      {warnings.filter(w=>w.severity==="ok").length>0&&warnings.filter(w=>w.severity!=="ok").length===0&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:600,color:T.green,padding:"4px 8px",borderRadius:4,background:"#0F2A1A22",fontFamily:F.body}}>{I.check(T.green)} {warnings.find(w=>w.severity==="ok").msg}</div>}
+      {warnings.filter(w=>w.severity==="ok").length>0&&warnings.filter(w=>w.severity!=="ok").length===0&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:600,color:T.green,padding:"4px 8px",borderRadius:4,background:"#0F2A1Aaa",fontFamily:F.body}}>{I.check(T.green)} {warnings.find(w=>w.severity==="ok").msg}</div>}
 
       {statsOpen&&<>
         <div style={{marginTop:12,marginBottom:10}}>
-          <div style={{fontSize:10,color:T.textDim,marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Mana Curve</div>
+          <div style={{fontSize:10,color:T.textMuted,marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Mana Curve</div>
           <div style={{display:"flex",alignItems:"flex-end",gap:4,height:48}}>
             {[0,1,2,3,4,5,6,7].map(cmc=><div key={cmc} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center"}}>
               <div style={{fontSize:9,color:T.textDim,marginBottom:2}}>{stats.curve[cmc]||0}</div>
@@ -1012,12 +1012,12 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           </div>
         </div>
         {Object.keys(stats.clrs).length>0&&<div style={{marginBottom:8}}>
-          <div style={{fontSize:10,color:T.textDim,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Colors</div>
+          <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Colors</div>
           <div style={{display:"flex",gap:0,height:6,borderRadius:3,overflow:"hidden",marginBottom:4}}>{Object.entries(stats.clrs).map(([c,n])=><div key={c} style={{width:`${(n/totalClrs)*100}%`,background:MCLR[c],height:"100%"}}/>)}</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{Object.entries(stats.clrs).map(([c,n])=><div key={c} style={{display:"flex",alignItems:"center",gap:3}}><Pip s={c} sz={14}/><span style={{fontSize:10,color:T.textMuted,fontFamily:F.body}}>{n}</span></div>)}</div>
         </div>}
         {Object.keys(stats.types).length>0&&<div>
-          <div style={{fontSize:10,color:T.textDim,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Types</div>
+          <div style={{fontSize:10,color:T.textMuted,marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Types</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:4}}>{TYPE_ORDER.filter(t=>stats.types[t]).map(t=><span key={t} style={{padding:"2px 7px",borderRadius:4,background:T.cardInner,fontSize:10,color:T.textMuted,fontFamily:F.body}}>{t} {stats.types[t]}</span>)}</div>
         </div>}
       </>}
@@ -1328,8 +1328,11 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
 function TradeView({toast}) {
   const [give,setGive]=useState([]);const [recv,setRecv]=useState([]);
   const [side,setSide]=useState(null);const [q,setQ]=useState("");const [results,setResults]=useState([]);
+  const [history,setHistory]=useState([]);const [showHistory,setShowHistory]=useState(false);
   const dQ=useDebounce(q,350);
   useEffect(()=>{let c=false;if(dQ.length<2){setResults([]);return;}searchCards(dQ).then(r=>{if(!c)setResults(r)});return()=>{c=true}},[dQ]);
+  // Load trade history
+  useEffect(()=>{store.get("av-trade-history").then(h=>{if(h)setHistory(h)})},[]);
 
   const add=card=>{const e={...card,uid:Date.now(),qty:1};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
   const adjTrade=(list,setList,uid,d)=>setList(p=>p.map(c=>{if(c.uid!==uid)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
@@ -1337,6 +1340,12 @@ function TradeView({toast}) {
   const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
   const diff=giveT-recvT;
   const clearAll=()=>{setGive([]);setRecv([]);toast("Trade cleared","info")};
+  const saveTrade=()=>{
+    if(!give.length&&!recv.length)return;
+    const entry={id:Date.now(),date:new Date().toISOString().split("T")[0],give:give.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),recv:recv.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),giveTotal:giveT,recvTotal:recvT};
+    const newH=[entry,...history].slice(0,20);setHistory(newH);store.set("av-trade-history",newH);
+    toast("Trade saved to history");setGive([]);setRecv([]);
+  };
 
   const TradeSide=({title,cards,s,total,clr,onRm,onAdj})=><div style={{flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
@@ -1391,7 +1400,29 @@ function TradeView({toast}) {
         </div>
         <div style={{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10,color:T.textDim,fontFamily:F.body}}><span>Give: ${giveT.toFixed(2)}</span><span>Get: ${recvT.toFixed(2)}</span></div>
       </div>
-      <button onClick={clearAll} style={{width:"100%",marginTop:8,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Clear All</button>
+      <div style={{display:"flex",gap:6,marginTop:8}}>
+        <button onClick={saveTrade} style={{flex:1,padding:10,borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>Save Trade</button>
+        <button onClick={clearAll} style={{flex:1,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Clear All</button>
+      </div>
     </>}
+
+    {/* Trade History */}
+    {history.length>0&&<div style={{marginTop:16}}>
+      <button onClick={()=>setShowHistory(!showHistory)} style={{fontSize:12,color:T.textMuted,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,padding:0,textDecoration:"underline"}}>{showHistory?"Hide":"Show"} trade history ({history.length})</button>
+      {showHistory&&<div style={{marginTop:8}}>
+        {history.map(h=><div key={h.id} style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:10,marginBottom:6,boxShadow:S.cardFrame}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+            <span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{h.date}</span>
+            <span style={{fontSize:10,color:Math.abs(h.giveTotal-h.recvTotal)<1?T.green:h.giveTotal>h.recvTotal?T.red:T.blue,fontWeight:700,fontFamily:F.body}}>
+              {Math.abs(h.giveTotal-h.recvTotal)<.5?"Fair":h.giveTotal>h.recvTotal?`-$${(h.giveTotal-h.recvTotal).toFixed(2)}`:`+$${(h.recvTotal-h.giveTotal).toFixed(2)}`}
+            </span>
+          </div>
+          <div style={{display:"flex",gap:8,fontSize:10,fontFamily:F.body}}>
+            <div style={{flex:1}}><span style={{color:T.red,fontWeight:600}}>Gave:</span> {h.give.map(c=>`${c.qty}x ${c.name}`).join(", ")||"nothing"}</div>
+            <div style={{flex:1}}><span style={{color:T.green,fontWeight:600}}>Got:</span> {h.recv.map(c=>`${c.qty}x ${c.name}`).join(", ")||"nothing"}</div>
+          </div>
+        </div>)}
+      </div>}
+    </div>}
   </div>;
 }
