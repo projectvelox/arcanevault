@@ -282,7 +282,7 @@ function exportDeckList(deck, format = "text") {
 // FORMAT RULES & DECK VALIDATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const FORMAT_RULES = {
-  commander: { min: 100, max: 100, copies: 1, sideboard: 0, label: "Commander" },
+  commander: { min: 100, max: 100, copies: 1, sideboard: 0, label: "Commander", countCommander: true },
   standard:  { min: 60, max: null, copies: 4, sideboard: 15, label: "Standard" },
   modern:    { min: 60, max: null, copies: 4, sideboard: 15, label: "Modern" },
   pioneer:   { min: 60, max: null, copies: 4, sideboard: 15, label: "Pioneer" },
@@ -291,6 +291,7 @@ const FORMAT_RULES = {
   pauper:    { min: 60, max: null, copies: 4, sideboard: 15, label: "Pauper" },
 };
 const BASIC_LANDS = ["plains","island","swamp","mountain","forest","wastes","snow-covered plains","snow-covered island","snow-covered swamp","snow-covered mountain","snow-covered forest"];
+const ANY_NUMBER_CARDS = ["relentless rats","rat colony","shadowborn apostle","persistent petitioners","dragon's approach","seven dwarves","slime against humanity"];
 
 function validateDeck(deck) {
   const rules = FORMAT_RULES[deck.format] || FORMAT_RULES.standard;
@@ -304,7 +305,7 @@ function validateDeck(deck) {
   if (rules.min && mainCount >= rules.min && (!rules.max || mainCount <= rules.max)) warnings.push({ msg: `${mainCount}/${rules.min}+ cards`, severity: "ok" });
   if (rules.sideboard > 0 && sideCount > rules.sideboard) warnings.push({ msg: `Sideboard: ${sideCount}/${rules.sideboard} (${sideCount - rules.sideboard} over)`, severity: "warn" });
   const violations = [];
-  mainCards.forEach(c => { if (!BASIC_LANDS.includes(c.name.toLowerCase()) && c.qty > rules.copies) violations.push(`${c.name} (${c.qty}x, max ${rules.copies})`); });
+  mainCards.forEach(c => { const nl=c.name.toLowerCase(); if (!BASIC_LANDS.includes(nl) && !ANY_NUMBER_CARDS.includes(nl) && !(c.oracle_text||"").toLowerCase().includes("a deck can have any number") && c.qty > rules.copies) violations.push(`${c.name} (${c.qty}x, max ${rules.copies})`); });
   if (violations.length) warnings.push({ msg: `Over copy limit: ${violations.join(", ")}`, severity: "error" });
 
   // Commander color identity validation
@@ -328,7 +329,7 @@ function validateDeck(deck) {
   if (bannedCards.length) warnings.push({ msg: `Banned: ${bannedCards.map(c => c.name).join(", ")}`, severity: "error" });
 
   const restrictedCards = deck.cards.filter(c => c.legalities && c.legalities[deck.format] === "restricted" && c.qty > 1);
-  if (restrictedCards.length) warnings.push({ msg: `Restricted (max 1): ${restrictedCards.map(c => c.name).join(", ")}`, severity: "warn" });
+  if (restrictedCards.length) warnings.push({ msg: `Restricted (max 1): ${restrictedCards.map(c => c.name).join(", ")}`, severity: "error" });
 
   // Companion validation
   const companions = deck.cards.filter(c => c.board === "companion");
@@ -338,7 +339,7 @@ function validateDeck(deck) {
     const compName = comp.name?.toLowerCase() || "";
     const nonLandMain = deck.cards.filter(c => (c.board === "main" || c.board === "commander") && !(c.type_line || "").toLowerCase().includes("land"));
     if (compName.includes("lurrus")) {
-      const violations = nonLandMain.filter(c => c.cmc > 2 && (c.type_line || "").match(/creature|artifact|enchantment/i));
+      const violations = nonLandMain.filter(c => c.cmc > 2 && (c.type_line || "").match(/creature|artifact|enchantment|planeswalker/i));
       if (violations.length) warnings.push({ msg: `Lurrus: ${violations.length} permanents with MV>2`, severity: "error" });
     }
     if (compName.includes("yorion")) {
@@ -346,7 +347,7 @@ function validateDeck(deck) {
       if (mc < 80) warnings.push({ msg: `Yorion requires 80+ cards (have ${mc})`, severity: "error" });
     }
     if (compName.includes("kaheera")) {
-      const bad = nonLandMain.filter(c => (c.type_line||"").toLowerCase().includes("creature") && !["cat","elemental","nightmare","dinosaur","beast"].some(t => (c.type_line||"").toLowerCase().includes(t)));
+      const bad = nonLandMain.filter(c => (c.type_line||"").toLowerCase().includes("creature") && !["cat","elemental","nightmare","dinosaur","beast","phyrexian"].some(t => (c.type_line||"").toLowerCase().includes(t)));
       if (bad.length) warnings.push({ msg: `Kaheera: ${bad.length} invalid creature types`, severity: "error" });
     }
     if (compName.includes("obosh")) {
@@ -1484,7 +1485,9 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     const curve={},clrs={},types={};let val=0;
     main.forEach(c=>{const cmc=Math.min(Math.floor(c.cmc||0),7);curve[cmc]=(curve[cmc]||0)+c.qty;(c.mana_cost?.match(/\{([WUBRGC])\}/g)||[]).forEach(m=>{const s=m[1];clrs[s]=(clrs[s]||0)+c.qty});types[typeCategory(c.type_line)]=(types[typeCategory(c.type_line)]||0)+c.qty;if(c.prices?.usd)val+=parseFloat(c.prices.usd)*c.qty});
     const total=deck.cards.reduce((a,c)=>a+c.qty,0);const mainN=main.reduce((a,c)=>a+c.qty,0);
-    const avgMv=mainN?main.reduce((a,c)=>a+(c.cmc||0)*c.qty,0)/mainN:0;
+    const nonLand=main.filter(c=>!(c.type_line||"").toLowerCase().includes("land"));
+    const nonLandN=nonLand.reduce((a,c)=>a+c.qty,0);
+    const avgMv=nonLandN?nonLand.reduce((a,c)=>a+(c.cmc||0)*c.qty,0)/nonLandN:0;
     const lands=main.filter(c=>(c.type_line||"").toLowerCase().includes("land")).reduce((a,c)=>a+c.qty,0);
     const landPct=mainN?Math.round((lands/mainN)*100):0;
     // Recommended lands based on avg MV (Frank Karsten formula simplified)
