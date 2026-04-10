@@ -324,7 +324,7 @@ function BottomSheet({open,onClose,children}) {
     <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
   </div>;
 }
-function ConfirmDialog({open,title,message,confirmLabel="Exile",confirmColor=T.red,onConfirm,onCancel}) {
+function ConfirmDialog({open,title,message,confirmLabel="Delete",confirmColor=T.red,onConfirm,onCancel}) {
   if (!open) return null;
   return <div style={{position:"fixed",inset:0,zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:32}} onClick={onCancel}>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.7)"}}/>
@@ -416,14 +416,14 @@ export default function App() {
 
   const addColl=useCallback((card)=>{
     setColl(p=>{const ex=p.find(c=>c.id===card.id);if(ex)return p.map(c=>c===ex?{...c,qty:c.qty+1}:c);return[...p,{...card,qty:1,addedAt:Date.now()}]});
-    toast(`Resolved ${card.name} to Arcanum`);
+    toast(`Added ${card.name} to collection`);
   },[toast]);
   const addDeck=useCallback((did,card,board="main")=>{
     setDecks(p=>p.map(d=>{if(d.id!==did)return d;const ex=d.cards.find(c=>c.id===card.id&&c.board===board);if(ex)return{...d,cards:d.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
   },[]);
 
   const tabs=[{id:"search",icon:I.search,label:"Search"},{id:"vault",icon:I.vault,label:"Vault"},{id:"trade",icon:I.trade,label:"Trade"}];
-  const hdr={search:["Search","Scry the Multiverse"],vault:["Vault","Your Sanctum of Spells"],trade:["Trade","The Blind Eternities Market"]};
+  const hdr={search:["Search","Scry the Multiverse"],vault:["Vault","Decks & Collection"],trade:["Trade","Card Evaluator"]};
 
   return <div style={{minHeight:"100vh",background:S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative"}}>
     <ToastContainer toasts={toasts}/>
@@ -555,13 +555,13 @@ function SearchView({addColl,addDeck,decks,toast}) {
     {slideIdx>=0&&results[slideIdx]&&<CardSlider cards={results} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
       actions={(card)=><div>
         <div style={{display:"flex",gap:10}}>
-          <button onClick={()=>{addColl(card);setSlideIdx(-1)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>Collect</button>
-          <button onClick={()=>setShowAdd(!showAdd)} style={{flex:1,padding:14,borderRadius:12,border:`2px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Slot In</button>
+          <button onClick={()=>{addColl(card);setSlideIdx(-1)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>+ Collection</button>
+          <button onClick={()=>setShowAdd(!showAdd)} style={{flex:1,padding:14,borderRadius:12,border:`2px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+ Deck</button>
         </div>
         {showAdd&&decks.length>0&&<div style={{marginTop:8}}>{decks.map(d=>
-          <button key={d.id} onClick={()=>{addDeck(d.id,card);toast(`Slotted ${card.name} into ${d.name}`);setSlideIdx(-1);setShowAdd(false)}} style={{display:"block",width:"100%",padding:"12px 14px",marginBottom:4,borderRadius:10,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.text,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:F.body}}>{d.name} <span style={{color:T.textDim,fontSize:11}}>({d.format})</span></button>
+          <button key={d.id} onClick={()=>{addDeck(d.id,card);toast(`Added ${card.name} to ${d.name}`);setSlideIdx(-1);setShowAdd(false)}} style={{display:"block",width:"100%",padding:"12px 14px",marginBottom:4,borderRadius:10,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.text,fontSize:13,cursor:"pointer",textAlign:"left",fontFamily:F.body}}>{d.name} <span style={{color:T.textDim,fontSize:11}}>({d.format})</span></button>
         )}</div>}
-        {showAdd&&decks.length===0&&<div style={{padding:12,color:T.textDim,fontSize:12,textAlign:"center",fontFamily:F.body}}>Bind a grimoire first in the Vault</div>}
+        {showAdd&&decks.length===0&&<div style={{padding:12,color:T.textDim,fontSize:12,textAlign:"center",fontFamily:F.body}}>Create a deck first in the Vault</div>}
       </div>}
     />}
   </div>;
@@ -575,7 +575,7 @@ function VaultView({decks,setDecks,addDeck,coll,setColl,toast}) {
   if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast}/>;
   return <div style={{padding:16}}>
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
-      {[["decks","Grimoires",I.deck],["binder","Arcanum",I.binder]].map(([id,label,icon])=>
+      {[["decks","Decks",I.deck],["binder","Collection",I.binder]].map(([id,label,icon])=>
         <button key={id} onClick={()=>setSubTab(id)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:10,borderRadius:3,border:"none",cursor:"pointer",transition:"all .15s",background:subTab===id?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"transparent",color:subTab===id?"#000":T.textDim,fontSize:14,fontWeight:subTab===id?700:500,fontFamily:F.body}}>{icon(subTab===id?"#000":T.textDim)}{label}</button>
       )}
     </div>
@@ -593,36 +593,36 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 
   const sortedDecks=useMemo(()=>{const d=[...decks];if(sortBy==="name")d.sort((a,b)=>a.name.localeCompare(b.name));else if(sortBy==="format")d.sort((a,b)=>a.format.localeCompare(b.format));else d.sort((a,b)=>(b.ts||0)-(a.ts||0));return d},[decks,sortBy]);
 
-  const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);toast(`Bound new grimoire: "${name}"`)};
-  const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk)toast(`Exiled "${dk.name}" to the Blind Eternities`,"error")};
+  const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);toast(`Created "${name}"`)};
+  const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk)toast(`Deleted "${dk.name}"`,"error")};
 
   return <>
-    <ConfirmDialog open={!!deleteTarget} title="Exile this Grimoire?" message="Once exiled, this grimoire and all its spells are lost to the Blind Eternities. This cannot be undone." onConfirm={confirmDelete} onCancel={()=>setDeleteTarget(null)}/>
+    <ConfirmDialog open={!!deleteTarget} title="Delete this deck?" message="This will permanently remove the deck and all its cards. This cannot be undone." onConfirm={confirmDelete} onCancel={()=>setDeleteTarget(null)}/>
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>Grimoires</h2>
+      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>My Decks</h2>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
           <option value="recent">Recent</option><option value="name">Name</option><option value="format">Format</option>
         </select>
-        <button onClick={()=>setShowNew(!showNew)} style={{padding:"10px 16px",borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontFamily:F.body,boxShadow:S.goldGlow}}>{I.plus("#000")} Bind</button>
+        <button onClick={()=>setShowNew(!showNew)} style={{padding:"10px 16px",borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,fontFamily:F.body,boxShadow:S.goldGlow}}>{I.plus("#000")} New Deck</button>
       </div>
     </div>
 
     {showNew&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:16,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
-      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Name your grimoire..." onKeyDown={e=>e.key==="Enter"&&create()} style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Deck name..." onKeyDown={e=>e.key==="Enter"&&create()} style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
       <div style={{display:"flex",gap:8}}>
         <select value={format} onChange={e=>setFormat(e.target.value)} style={{flex:1,padding:"10px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body}}>
           {Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
         </select>
-        <button onClick={create} style={{padding:"10px 24px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Bind</button>
+        <button onClick={create} style={{padding:"10px 24px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Create</button>
       </div>
     </div>}
 
     {decks.length===0?<div style={{textAlign:"center",padding:"48px 20px",color:T.textDim}}>
       <div style={{marginBottom:12}}>{I.deck(T.textDim)}</div>
-      <div style={{fontSize:15,color:T.textMuted,fontFamily:F.body}}>No grimoires yet</div>
-      <div style={{fontSize:13,marginTop:4,marginBottom:14,fontFamily:F.body}}>Tap Bind to create your first spellbook</div>
+      <div style={{fontSize:15,color:T.textMuted,fontFamily:F.body}}>No decks yet</div>
+      <div style={{fontSize:13,marginTop:4,marginBottom:14,fontFamily:F.body}}>Tap + New Deck to build your first spellbook</div>
       <div style={{fontSize:13,color:T.textDim,fontStyle:"italic",lineHeight:1.6,fontFamily:F.body}}>{randomFlavor("decks")}</div>
     </div>
     :sortedDecks.map(d=>{
@@ -650,7 +650,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
           </div>
           <div style={{textAlign:"right"}}>
             <div style={{fontSize:15,fontWeight:700,color:T.green,fontFamily:F.body}}>{fmt(v.toFixed(2))}</div>
-            <button onClick={e=>{e.stopPropagation();setDeleteTarget(d.id)}} style={{marginTop:4,padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontFamily:F.body}}>{I.trash(T.red)} Exile</button>
+            <button onClick={e=>{e.stopPropagation();setDeleteTarget(d.id)}} style={{marginTop:4,padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontFamily:F.body}}>{I.trash(T.red)} Delete</button>
           </div>
         </div>
         {preview.length>0&&<div style={{display:"flex",gap:6,marginTop:10,overflow:"hidden"}}>
@@ -702,10 +702,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
   const drawCard=()=>{if(!lib.length)return;setDrawn(p=>[...p,lib[0]]);setLib(p=>p.slice(1));setTurn(t=>t+1)};
 
   const handleImport=async()=>{
-    const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No spells found");return;}
-    setImportStatus(`Resolving ${entries.length} spells...`);let imported=0;
+    const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No valid entries found");return;}
+    setImportStatus(`Importing ${entries.length} cards...`);let imported=0;
     for(const entry of entries){try{const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();for(let i=0;i<entry.qty;i++)addDeck(deckId,card,entry.board);imported++}await new Promise(r=>setTimeout(r,80))}catch{}}
-    setImportStatus(`Resolved ${imported}/${entries.length} spells`);toast(`Resolved ${imported} spells`);
+    setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
   const handleExport=()=>{navigator.clipboard.writeText(exportDeckList(deck)).then(()=>toast("Decklist transcribed to clipboard")).catch(()=>window.prompt("Copy:",exportDeckList(deck)))};
@@ -764,17 +764,16 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
     {/* Actions */}
     <div style={{display:"flex",gap:6,marginBottom:12}}>
       <button onClick={newGame} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:showSim?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.simulate(T.gold)} Playtest</button>
-      <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Transcribe</button>
+      <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Import</button>
       <button onClick={handleExport} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
     </div>
 
-    {/* Import — "Transcribe Scroll" */}
     {showImport&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
-      <div style={{fontSize:14,fontWeight:700,color:T.accent,marginBottom:6,fontFamily:F.heading}}>Transcribe Scroll</div>
-      <div style={{fontSize:11,color:T.textDim,marginBottom:8,lineHeight:1.4,fontFamily:F.body}}>Transcribe your decklist here \u2014 the Vault will divine each card. Use "Sideboard" or "Commander" headers.</div>
+      <div style={{fontSize:14,fontWeight:700,color:T.accent,marginBottom:6,fontFamily:F.heading}}>Import Decklist</div>
+      <div style={{fontSize:11,color:T.textDim,marginBottom:8,lineHeight:1.4,fontFamily:F.body}}>Paste your decklist \u2014 the Vault will resolve each card. Use "Sideboard" or "Commander" headers.</div>
       <textarea value={importText} onChange={e=>setImportText(e.target.value)} placeholder={"4 Lightning Bolt\n4 Counterspell\n\nSideboard\n2 Rest in Peace"} style={{width:"100%",height:120,padding:12,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,resize:"vertical",boxSizing:"border-box",fontFamily:"monospace",lineHeight:1.5,boxShadow:S.insetInput}}/>
       <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
-        <button onClick={handleImport} disabled={!importText.trim()} style={{padding:"10px 20px",borderRadius:4,border:"none",background:importText.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:importText.trim()?"#000":"#666",fontSize:13,fontWeight:700,cursor:importText.trim()?"pointer":"default",fontFamily:F.body}}>Transcribe</button>
+        <button onClick={handleImport} disabled={!importText.trim()} style={{padding:"10px 20px",borderRadius:4,border:"none",background:importText.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:importText.trim()?"#000":"#666",fontSize:13,fontWeight:700,cursor:importText.trim()?"pointer":"default",fontFamily:F.body}}>Import</button>
         {importStatus&&<span style={{fontSize:12,color:T.gold,fontFamily:F.body}}>{importStatus}</span>}
       </div>
     </div>}
@@ -782,11 +781,11 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
     {/* Playtest (simulator) */}
     {showSim&&hand.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.gold}33`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Playtest \u2014 Scry Your Fate</div>
+        <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Playtest</div>
         <button onClick={()=>setShowSim(false)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.close(T.textDim)}</button>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:10}}>
-        <button onClick={mull} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>London Mulligan{mulls>0?` (${mulls})`:""}</button>
+        <button onClick={mull} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Mulligan{mulls>0?` (${mulls})`:""}</button>
         <button onClick={drawCard} disabled={!lib.length} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:11,fontWeight:700,cursor:"pointer",opacity:lib.length?1:.4,fontFamily:F.body}}>Draw for Turn</button>
         <button onClick={newGame} style={{padding:"8px 12px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Reset</button>
       </div>
@@ -803,7 +802,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
 
     {/* Add cards with filters */}
     <div style={{marginBottom:4}}>
-      <input value={addQ} onChange={e=>setAddQ(e.target.value)} placeholder="Search spells to inscribe..." style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,boxSizing:"border-box",marginBottom:6,fontFamily:F.body,boxShadow:S.insetInput}}/>
+      <input value={addQ} onChange={e=>setAddQ(e.target.value)} placeholder="Search cards to add..." style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,boxSizing:"border-box",marginBottom:6,fontFamily:F.body,boxShadow:S.insetInput}}/>
       <div style={{display:"flex",gap:4,overflowX:"auto",alignItems:"center",paddingBottom:4}}>
         <ColorPills colors={addColors} setColors={setAddColors} size={28}/>
         <TypeSelect type={addType} setType={setAddType} h={30}/>
@@ -816,7 +815,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
           <div style={{minWidth:0,flex:1}}><div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:13,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span><RarityBadge rarity={c.rarity} sz={14}/></div><Cost c={c.mana_cost} sz={12}/></div>
         </div>
         <div style={{display:"flex",gap:4,flexShrink:0}}>
-          <button onClick={()=>{addDeck(deckId,c,"main");toast(`Inscribed ${c.name}`)}} style={{padding:"6px 12px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
+          <button onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}} style={{padding:"6px 12px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
           <button onClick={()=>{addDeck(deckId,c,"sideboard");toast(`${c.name} to sideboard`)}} style={{padding:"6px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Side</button>
         </div>
       </div>)}
@@ -830,7 +829,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast}) {
 
     {/* Empty deck message */}
     {deck.cards.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:T.textDim}}>
-      <div style={{fontSize:14,fontFamily:F.body,marginBottom:8}}>This grimoire is blank \u2014 search above to inscribe your first spell.</div>
+      <div style={{fontSize:14,fontFamily:F.body,marginBottom:8}}>This deck is empty \u2014 search above to add your first card.</div>
       <div style={{fontSize:13,fontStyle:"italic",color:T.textDim,fontFamily:F.body}}>"An empty page is the most dangerous weapon a mage can carry." \u2014 Teferi</div>
     </div>}
 
@@ -915,7 +914,7 @@ function BinderView({coll,setColl,toast}) {
 
   return <>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>Arcanum</h2>
+      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>My Collection</h2>
       <div style={{display:"flex",gap:4}}>
         <button onClick={()=>setShowFilters(!showFilters)} style={{width:32,height:32,borderRadius:4,border:"none",background:showFilters||hasFilters?T.goldGlow:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>{I.search(showFilters||hasFilters?T.gold:T.textDim)}{hasFilters&&<div style={{position:"absolute",top:2,right:2,width:6,height:6,borderRadius:3,background:T.gold}}/>}</button>
         <button onClick={()=>setView("grid")} style={{width:32,height:32,borderRadius:4,border:"none",background:view==="grid"?T.goldGlow:T.card,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{I.grid(view==="grid"?T.gold:T.textDim)}</button>
@@ -933,7 +932,7 @@ function BinderView({coll,setColl,toast}) {
     </div>
 
     <div style={{display:"flex",gap:8,marginBottom:showFilters?8:12}}>
-      <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter your arcanum..." style={{flex:1,padding:"10px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body,boxShadow:S.insetInput}}/>
+      <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter cards..." style={{flex:1,padding:"10px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body,boxShadow:S.insetInput}}/>
       <select value={sort} onChange={e=>setSort(e.target.value)} style={{padding:"10px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:12,fontFamily:F.body}}><option value="name">A-Z</option><option value="price">Price</option><option value="recent">Recent</option></select>
     </div>
 
@@ -946,7 +945,7 @@ function BinderView({coll,setColl,toast}) {
 
     {coll.length===0?<div style={{textAlign:"center",padding:"48px 20px",color:T.textDim}}>
       <div style={{marginBottom:12}}>{I.binder(T.textDim)}</div>
-      <div style={{fontSize:15,color:T.textMuted,fontFamily:F.body}}>Your arcanum is empty</div>
+      <div style={{fontSize:15,color:T.textMuted,fontFamily:F.body}}>Your collection is empty</div>
       <div style={{fontSize:13,marginTop:4,marginBottom:14,fontFamily:F.body}}>Collect cards from the Search tab</div>
       <div style={{fontSize:13,color:T.textDim,fontStyle:"italic",lineHeight:1.6,fontFamily:F.body}}>{randomFlavor("binder")}</div>
     </div>
@@ -998,7 +997,7 @@ function TradeView({toast}) {
   const dQ=useDebounce(q,350);
   useEffect(()=>{let c=false;if(dQ.length<2){setResults([]);return;}searchCards(dQ).then(r=>{if(!c)setResults(r)});return()=>{c=true}},[dQ]);
 
-  const add=card=>{const e={...card,uid:Date.now()};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Resolved ${card.name}`)};
+  const add=card=>{const e={...card,uid:Date.now()};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
   const giveT=give.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)),0);
   const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0)),0);
   const diff=giveT-recvT;
