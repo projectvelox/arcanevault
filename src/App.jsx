@@ -32,8 +32,17 @@ async function searchScryfall(query, colors = [], type = "", set = "", extra = {
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(parts.join(" "))}&order=name&unique=${set ? "prints" : "cards"}`);
     if (!res.ok) return { data: [], total: 0 };
     const json = await res.json();
-    return { data: json.data || [], total: json.total_cards || 0 };
-  } catch { return { data: [], total: 0 }; }
+    return { data: json.data || [], total: json.total_cards || 0, nextPage: json.has_more ? json.next_page : null };
+  } catch { return { data: [], total: 0, nextPage: null }; }
+}
+
+async function fetchNextPage(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return { data: [], nextPage: null };
+    const json = await res.json();
+    return { data: json.data || [], nextPage: json.has_more ? json.next_page : null };
+  } catch { return { data: [], nextPage: null }; }
 }
 
 async function searchCards(query, colors = [], type = "") {
@@ -588,6 +597,10 @@ function CardSlider({cards,index,onIndexChange,onClose,actions}) {
           )}
         </div>
         {/* Purchase links */}
+        {/* Price context */}
+        {card.prices?.usd&&<div style={{textAlign:"center",marginTop:4,fontSize:10,fontFamily:F.body,color:T.textDim}}>
+          {parseFloat(card.prices.usd)<1?"Budget-friendly":parseFloat(card.prices.usd)<5?"Affordable":parseFloat(card.prices.usd)<20?"Mid-range":parseFloat(card.prices.usd)<50?"Premium":"High-end"} {card.rarity&&`for ${card.rarity}`}
+        </div>}
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
           {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
           {card.purchase_uris.cardmarket&&<a href={card.purchase_uris.cardmarket} target="_blank" rel="noopener" style={{fontSize:10,color:T.blue,fontFamily:F.body,textDecoration:"underline"}}>Cardmarket</a>}
@@ -903,6 +916,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [slideIdx,setSlideIdx]=useState(-1);const [showAdd,setShowAdd]=useState(false);
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
   const [browseSet,setBrowseSet]=useState(null);const [setCards,setSetCards]=useState([]);const [sLoading,setSLoading]=useState(false);
+  const [nextPage,setNextPage]=useState(null);const [loadingMore,setLoadingMore]=useState(false);
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const [showBurst,setShowBurst]=useState(false);
@@ -919,7 +933,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     let cancelled=false;const has=dQ||dC.length||dT||dS||dR||dCmc||dOT;
     if(!has){setResults([]);setTotal(0);return;}
     setLoading(true);
-    searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{if(!cancelled){setResults(res.data);setTotal(res.total);setLoading(false)}});
+    searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{if(!cancelled){setResults(res.data);setTotal(res.total);setNextPage(res.nextPage);setLoading(false)}});
     return()=>{cancelled=true};
   },[dQ,dC,dT,dS,dR,dCmc,dOT]);
 
@@ -945,7 +959,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
       <div style={{display:"flex",gap:8}}>
         <div style={{position:"relative",flex:1}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell... (try o:draw or t:angel)" style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <input aria-label="Search cards" value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell... (try o:draw or t:angel)" style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
           <span style={{position:"absolute",left:14,top:14,opacity:.4}}>{I.search(T.textDim)}</span>
           {autocomplete.length>0&&acFocused&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:T.surface,border:`1px solid ${T.cardBorder}`,borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,.5)",maxHeight:200,overflowY:"auto"}}>
             {autocomplete.slice(0,8).map(name=><div key={name} onMouseDown={()=>{setQ(name);setAutocomplete([])}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.text,fontFamily:F.body,borderBottom:`1px solid ${T.cardBorder}`}}>{name}</div>)}
@@ -1034,6 +1048,13 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
           </div>
         </div>
       );})}
+    </div>}
+
+    {/* Load More pagination */}
+    {nextPage&&!loading&&results.length>0&&<div style={{textAlign:"center",padding:"12px 0 20px"}}>
+      <button onClick={async()=>{setLoadingMore(true);const res=await fetchNextPage(nextPage);setResults(p=>[...p,...res.data]);setNextPage(res.nextPage);setLoadingMore(false)}} disabled={loadingMore} style={{padding:"12px 32px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:F.body,opacity:loadingMore?.5:1}}>
+        {loadingMore?"Loading...":"Load More Cards"}
+      </button>
     </div>}
 
     {/* Card of the Day — empty state */}
@@ -1198,7 +1219,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
     </div>
 
     {showNew&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:16,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
-      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Deck name..." onKeyDown={e=>e.key==="Enter"&&create()} style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+      <input aria-label="Deck name" value={name} onChange={e=>setName(e.target.value)} placeholder="Deck name..." onKeyDown={e=>e.key==="Enter"&&create()} style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,marginBottom:8,boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
       <div style={{display:"flex",gap:8,marginBottom:8}}>
         <select value={format} onChange={e=>setFormat(e.target.value)} style={{flex:1,padding:"10px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body}}>
           {Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
