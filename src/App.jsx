@@ -111,6 +111,23 @@ function parseDeckList(text) {
   return entries;
 }
 
+function exportCollectionCSV(cards) {
+  const header = "Quantity,Name,Set,Set Code,Collector Number,Condition,Foil,Language,Price USD";
+  const rows = cards.map(c => `${c.qty},"${c.name}","${c.set_name||""}","${c.set||""}","${c.collector_number||""}","${c.condition||"NM"}","${c.foil?"Yes":"No"}","${(c.language||"en").toUpperCase()}","${c.prices?.usd||""}"`);
+  return header + "\n" + rows.join("\n");
+}
+
+function parseCollectionCSV(text) {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const entries = [];
+  for (let i = 1; i < lines.length; i++) {
+    const match = lines[i].match(/^(\d+),"([^"]*)"(?:,"([^"]*)")?(?:,"([^"]*)")?(?:,"([^"]*)")?(?:,"([^"]*)")?(?:,"([^"]*)")?(?:,"([^"]*)")?(?:,"([^"]*)")?/);
+    if (match) entries.push({ qty: parseInt(match[1]) || 1, name: match[2], condition: match[6] || "NM", foil: match[7] === "Yes", language: (match[8] || "EN").toLowerCase() });
+  }
+  return entries;
+}
+
 function exportDeckList(deck) {
   let out = "";
   const cmdr = deck.cards.filter(c => c.board === "commander"), main = deck.cards.filter(c => c.board === "main"), side = deck.cards.filter(c => c.board === "sideboard");
@@ -688,11 +705,69 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
   const coll=useMemo(()=>(binders.find(b=>b.id===activeBinder)?.cards||[]),[binders,activeBinder]);
   const setColl=useCallback((fn)=>setBinders(p=>p.map(b=>b.id===activeBinder?{...b,cards:typeof fn==="function"?fn(b.cards):fn}:b)),[activeBinder,setBinders]);
 
+  // Vault Stats (all binders combined)
+  const vaultStats=useMemo(()=>{
+    const all=[];binders.forEach(b=>all.push(...b.cards));
+    const totalCards=all.reduce((a,c)=>a+c.qty,0);
+    const totalValue=all.reduce((a,c)=>a+(parseFloat(c.foil?c.prices?.usd_foil:c.prices?.usd||0)*c.qty),0);
+    const uniqueCards=all.length;
+    const sets=new Set(all.map(c=>c.set).filter(Boolean));
+    const colorCounts={W:0,U:0,B:0,R:0,G:0};
+    all.forEach(c=>(c.color_identity||[]).forEach(ci=>{if(colorCounts[ci]!==undefined)colorCounts[ci]+=c.qty}));
+    const topColor=Object.entries(colorCounts).sort((a,b)=>b[1]-a[1])[0];
+    const priciest=all.length?[...all].sort((a,b)=>(parseFloat(b.prices?.usd||0))-(parseFloat(a.prices?.usd||0)))[0]:null;
+    const foilCount=all.filter(c=>c.foil).reduce((a,c)=>a+c.qty,0);
+    return{totalCards,totalValue,uniqueCards,sets:sets.size,colorCounts,topColor,priciest,foilCount,deckCount:decks.length,binderCount:binders.length};
+  },[binders,decks]);
+
   if(activeDeck) return <DeckEditor deckId={activeDeck} decks={decks} setDecks={setDecks} addDeck={addDeck} onBack={()=>setActiveDeck(null)} toast={toast} coll={coll} allCollCards={allCollCards}/>;
+
+  const vs=vaultStats;
+  const totalClrsV=Object.values(vs.colorCounts).reduce((a,b)=>a+b,0)||1;
+
   return <div style={{padding:16}}>
+    {/* Vault Stats overview */}
+    {subTab==="stats"&&<div style={{marginBottom:16}}>
+      <h2 style={{margin:"0 0 12px",fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Your Vault</h2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+        {[["Total Cards",vs.totalCards,T.text],["Vault Value","$"+vs.totalValue.toFixed(2),T.green],["Unique Cards",vs.uniqueCards,T.text],["Sets Owned",vs.sets,T.text],[`${vs.deckCount} Decks`,`${vs.binderCount} Binders`,T.textMuted],["Foil Cards",vs.foilCount,T.purple]].map(([l,v,c],i)=>
+          <div key={i} style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,textAlign:"center",boxShadow:S.cardFrame,backgroundImage:S.texture}}>
+            <div style={{fontSize:9,color:T.textDim,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>{l}</div>
+            <div style={{fontSize:18,fontWeight:800,color:c,marginTop:2,fontFamily:F.heading}}>{v}</div>
+          </div>
+        )}
+      </div>
+      {/* Color identity breakdown */}
+      {totalClrsV>1&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
+        <div style={{fontSize:10,color:T.textDim,marginBottom:8,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Your Color Identity</div>
+        <div style={{display:"flex",gap:0,height:10,borderRadius:5,overflow:"hidden",marginBottom:8}}>
+          {Object.entries(vs.colorCounts).filter(([,n])=>n>0).map(([c,n])=><div key={c} style={{width:`${(n/totalClrsV)*100}%`,background:MCLR[c],height:"100%"}}/>)}
+        </div>
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap"}}>
+          {Object.entries(vs.colorCounts).filter(([,n])=>n>0).map(([c,n])=><div key={c} style={{display:"flex",alignItems:"center",gap:4}}><Pip s={c} sz={18}/><span style={{fontSize:13,fontWeight:700,color:T.text,fontFamily:F.body}}>{n}</span></div>)}
+        </div>
+        {vs.topColor&&vs.topColor[1]>0&&<div style={{textAlign:"center",marginTop:8,fontSize:12,color:T.textMuted,fontFamily:F.body,fontStyle:"italic"}}>You are primarily a <span style={{color:MCLR[vs.topColor[0]],fontWeight:700}}>{{W:"White",U:"Blue",B:"Black",R:"Red",G:"Green"}[vs.topColor[0]]}</span> mage</div>}
+      </div>}
+      {/* Priciest card */}
+      {vs.priciest&&<div style={{position:"relative",overflow:"hidden",background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:14,boxShadow:S.cardFrame}}>
+        <ArtBg src={getImg(vs.priciest)} opacity={.12} blur={24}/>
+        <div style={{position:"relative"}}>
+          <div style={{fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:F.heading}}>Most Valuable Card</div>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <img src={getImg(vs.priciest,"small")} alt={vs.priciest.name} style={{width:48,height:67,borderRadius:4,objectFit:"cover"}}/>
+            <div>
+              <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{vs.priciest.name}</div>
+              <div style={{fontSize:12,color:T.textDim,fontFamily:F.body}}>{vs.priciest.set_name}</div>
+              <div style={{fontSize:18,fontWeight:800,color:T.green,fontFamily:F.heading,marginTop:2}}>{fmt(vs.priciest.prices?.usd)}</div>
+            </div>
+          </div>
+        </div>
+      </div>}
+    </div>}
+
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
-      {[["decks","Decks",I.deck],["binder","Collection",I.binder]].map(([id,label,icon])=>
-        <button key={id} onClick={()=>setSubTab(id)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:10,borderRadius:3,border:"none",cursor:"pointer",transition:"all .15s",background:subTab===id?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"transparent",color:subTab===id?"#000":T.textDim,fontSize:14,fontWeight:subTab===id?700:500,fontFamily:F.body}}>{icon(subTab===id?"#000":T.textDim)}{label}</button>
+      {[["stats","Overview",I.sparkle],["decks","Decks",I.deck],["binder","Collection",I.binder]].map(([id,label,icon])=>
+        <button key={id} onClick={()=>setSubTab(id)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:5,padding:10,borderRadius:3,border:"none",cursor:"pointer",transition:"all .15s",background:subTab===id?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"transparent",color:subTab===id?"#000":T.textDim,fontSize:13,fontWeight:subTab===id?700:500,fontFamily:F.body}}>{icon(subTab===id?"#000":T.textDim)}{label}</button>
       )}
     </div>
     {subTab==="decks"&&<DecksList decks={decks} setDecks={setDecks} onOpen={setActiveDeck} toast={toast}/>}
@@ -1043,6 +1118,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");
   const [slideIdx,setSlideIdx]=useState(-1);const [showFilters,setShowFilters]=useState(false);
   const [showNewBinder,setShowNewBinder]=useState(false);const [newBinderName,setNewBinderName]=useState("");
+  const [selectMode,setSelectMode]=useState(false);const [selected,setSelected]=useState(new Set());
+  const [showImportColl,setShowImportColl]=useState(false);const [importCollText,setImportCollText]=useState("");const [importCollStatus,setImportCollStatus]=useState("");
 
   const currentBinder=binders.find(b=>b.id===activeBinder)||binders[0];
   const totalVal=coll.reduce((a,c)=>a+(parseFloat(c.foil?c.prices?.usd_foil:c.prices?.usd||0)*c.qty),0);
@@ -1050,6 +1127,19 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
 
   const createBinder=()=>{if(!newBinderName.trim())return;const id=Date.now().toString();setBinders(p=>[...p,{id,name:newBinderName.trim(),cards:[]}]);setActiveBinder(id);setNewBinderName("");setShowNewBinder(false);toast(`Created "${newBinderName.trim()}"`)};
   const deleteBinder=(id)=>{if(id==="main")return;setBinders(p=>p.filter(b=>b.id!==id));if(activeBinder===id)setActiveBinder("main");toast("Binder deleted","error")};
+  const toggleSelect=(id)=>setSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n});
+  const selectAll=()=>setSelected(new Set(items.map(c=>c.id)));
+  const bulkDelete=()=>{setColl(p=>p.filter(c=>!selected.has(c.id)));toast(`Removed ${selected.size} cards`,"error");setSelected(new Set());setSelectMode(false)};
+  const bulkMoveTo=(targetId)=>{const toMove=coll.filter(c=>selected.has(c.id));setBinders(p=>p.map(b=>{if(b.id===activeBinder)return{...b,cards:b.cards.filter(c=>!selected.has(c.id))};if(b.id===targetId)return{...b,cards:[...b.cards,...toMove]};return b}));toast(`Moved ${selected.size} cards`);setSelected(new Set());setSelectMode(false)};
+  const handleExportCSV=()=>{const csv=exportCollectionCSV(coll);navigator.clipboard.writeText(csv).then(()=>toast("CSV copied to clipboard")).catch(()=>window.prompt("Copy:",csv))};
+  const handleImportColl=async()=>{
+    const entries=parseCollectionCSV(importCollText);
+    if(!entries.length){setImportCollStatus("No valid entries");return;}
+    setImportCollStatus(`Importing ${entries.length} cards...`);let imported=0;
+    for(const entry of entries){try{const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();setColl(p=>[...p,{...card,qty:entry.qty,addedAt:Date.now(),condition:entry.condition,foil:entry.foil,language:entry.language}]);imported++}await new Promise(r=>setTimeout(r,80))}catch{}}
+    setImportCollStatus(`Imported ${imported}/${entries.length}`);toast(`Imported ${imported} cards`);
+    setTimeout(()=>{setShowImportColl(false);setImportCollText("");setImportCollStatus("")},1500);
+  };
 
   const items=useMemo(()=>{
     let r=[...coll];
@@ -1094,6 +1184,28 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       )}
     </div>
 
+    {/* Bulk actions + export/import */}
+    <div style={{display:"flex",gap:4,marginBottom:8}}>
+      <button onClick={()=>{setSelectMode(!selectMode);setSelected(new Set())}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${selectMode?T.gold:T.cardBorder}`,background:selectMode?T.goldGlow:"transparent",color:selectMode?T.gold:T.textDim,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>{selectMode?"Cancel":"Select"}</button>
+      {selectMode&&<><button onClick={selectAll} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:10,cursor:"pointer",fontFamily:F.body}}>All ({items.length})</button>
+        {selected.size>0&&<button onClick={bulkDelete} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Delete ({selected.size})</button>}
+        {selected.size>0&&binders.length>1&&<select onChange={e=>{if(e.target.value)bulkMoveTo(e.target.value);e.target.value=""}} style={{padding:"6px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}><option value="">Move to...</option>{binders.filter(b=>b.id!==activeBinder).map(b=><option key={b.id} value={b.id}>{b.name}</option>)}</select>}
+      </>}
+      {!selectMode&&<>
+        <button onClick={handleExportCSV} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:10,cursor:"pointer",fontFamily:F.body}}>{I.export(T.textDim)} CSV</button>
+        <button onClick={()=>setShowImportColl(!showImportColl)} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:showImportColl?T.goldGlow:"transparent",color:showImportColl?T.gold:T.textMuted,fontSize:10,cursor:"pointer",fontFamily:F.body}}>{I.import(T.textDim)} Import</button>
+      </>}
+    </div>
+    {showImportColl&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginBottom:10,boxShadow:S.cardFrame}}>
+      <div style={{fontSize:12,fontWeight:700,color:T.accent,marginBottom:6,fontFamily:F.heading}}>Import Collection (CSV)</div>
+      <div style={{fontSize:10,color:T.textDim,marginBottom:6,fontFamily:F.body}}>Paste CSV with headers: Quantity,Name,Set,Set Code,Collector Number,Condition,Foil,Language,Price USD</div>
+      <textarea value={importCollText} onChange={e=>setImportCollText(e.target.value)} placeholder={"Quantity,Name,...\n1,\"Lightning Bolt\",...\n4,\"Counterspell\",..."} style={{width:"100%",height:100,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,resize:"vertical",boxSizing:"border-box",fontFamily:"monospace",lineHeight:1.4,boxShadow:S.insetInput}}/>
+      <div style={{display:"flex",gap:8,marginTop:6,alignItems:"center"}}>
+        <button onClick={handleImportColl} disabled={!importCollText.trim()} style={{padding:"8px 16px",borderRadius:4,border:"none",background:importCollText.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:importCollText.trim()?"#000":"#666",fontSize:12,fontWeight:700,cursor:importCollText.trim()?"pointer":"default",fontFamily:F.body}}>Import</button>
+        {importCollStatus&&<span style={{fontSize:11,color:T.gold,fontFamily:F.body}}>{importCollStatus}</span>}
+      </div>
+    </div>}
+
     <div style={{display:"flex",gap:8,marginBottom:showFilters?8:12}}>
       <input value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Filter cards..." style={{flex:1,padding:"10px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:F.body,boxShadow:S.insetInput}}/>
       <select value={sort} onChange={e=>setSort(e.target.value)} style={{padding:"10px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:12,fontFamily:F.body}}><option value="name">A-Z</option><option value="price">Price</option><option value="recent">Recent</option></select>
@@ -1114,7 +1226,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     </div>
     :items.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:T.textDim,fontFamily:F.body}}>The spell fizzles \u2014 no cards match</div>
     :view==="grid"?<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-      {items.map((c,i)=><div key={c.id} style={{position:"relative",borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${T.cardBorder}`,cursor:"pointer",boxShadow:S.cardFrame}} onClick={()=>setSlideIdx(i)}>
+      {items.map((c,i)=><div key={c.id} style={{position:"relative",borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${selected.has(c.id)?T.gold:T.cardBorder}`,cursor:"pointer",boxShadow:S.cardFrame}} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)}>
         <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",display:"block"}}/>
         {c.qty>1&&<div style={{position:"absolute",top:4,right:4,background:T.gold,color:"#000",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
         <div style={{padding:"6px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1126,7 +1238,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         </div>
       </div>)}
     </div>
-    :items.map((c,i)=><div key={c.id} onClick={()=>setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture}}>
+    :items.map((c,i)=><div key={c.id} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture,border:`1px solid ${selected.has(c.id)?T.gold:"transparent"}`}}>
       <img src={getImg(c,"small")} alt={c.name} style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
