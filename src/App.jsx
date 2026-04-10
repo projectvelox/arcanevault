@@ -134,8 +134,8 @@ async function preprocessImage(file) {
     img.onload = () => {
       URL.revokeObjectURL(img.src);
       const canvas = document.createElement("canvas");
-      // Crop to top 18% (title bar region of a standard MTG card)
-      const cropH = Math.round(img.height * 0.18);
+      // Crop to top 30% (title bar + some margin for non-centered photos)
+      const cropH = Math.round(img.height * 0.30);
       canvas.width = img.width;
       canvas.height = cropH;
       const ctx = canvas.getContext("2d");
@@ -1053,10 +1053,10 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       const name=await scanCardImage(file);
       if(scanAbort.current){URL.revokeObjectURL(blobUrl);return;} // Cancelled during scan
       if(name){setQ(name);setScanStatus(`Found: "${name}"`);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},1200)}
-      else{setScanStatus("Could not read card name. Try better lighting.");setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},2500)}
+      else{setScanStatus("Could not read card name. Try a closer photo with good lighting.");setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},4000)}
     }catch(err){
-      const msg=err?.message?.includes("timeout")?"Scan timed out. Try a clearer photo.":"Scan failed. Try again with better lighting.";
-      setScanStatus(msg);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},2500);
+      const msg=err?.message?.includes("timeout")?"Scan timed out. Try a closer, well-lit photo.":"Scan failed. Try again with better lighting and angle.";
+      setScanStatus(msg);setTimeout(()=>{setScanning(false);setScanPreview(null);URL.revokeObjectURL(blobUrl)},4000);
     }
     if(fileRef.current)fileRef.current.value="";
   };
@@ -1316,9 +1316,15 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 
   const [tag,setTag]=useState("");
   const TAGS=["Aggro","Midrange","Control","Combo","Tempo","Ramp","Tribal","Voltron","Stax","Mill","Burn","Tokens","Reanimator","Spellslinger"];
-  const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],notes:"",tags:tag?[tag]:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);setTag("");toast(`Created "${name}"`)};
-  const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk)toast(`Deleted "${dk.name}"`,"error")};
-  const cloneDeck=(d)=>{const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:[...d.cards],ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`)};
+  const create=async()=>{if(!name.trim())return;
+    let deckId=Date.now().toString();
+    if(supabase){const{data:sd}=await decksApi.create(name,format,tag?[tag]:[]);if(sd)deckId=sd.id;}
+    const d={id:deckId,name,format,cards:[],notes:"",tags:tag?[tag]:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);setTag("");toast(`Created "${name}"`);};
+  const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk){toast(`Deleted "${dk.name}"`,"error");if(supabase)enqueueWrite(()=>decksApi.delete(deleteTarget))}};
+  const cloneDeck=async(d)=>{
+    if(supabase){const{data:nd}=await decksApi.clone(d.id);if(nd){setDecks(p=>[...p,{...nd,cards:[...d.cards],tags:nd.tags||[],notes:nd.notes||""}]);toast(`Cloned "${d.name}"`);return;}}
+    const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:[...d.cards],ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`);
+  };
 
   return <>
     <ConfirmDialog open={!!deleteTarget} title="Delete this deck?" message="This will permanently remove the deck and all its cards. This cannot be undone." onConfirm={confirmDelete} onCancel={()=>setDeleteTarget(null)}/>
@@ -1742,8 +1748,11 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const totalVal=coll.reduce((a,c)=>a+(parseFloat(c.foil?c.prices?.usd_foil:c.prices?.usd||0)*c.qty),0);
   const totalCards=coll.reduce((a,c)=>a+c.qty,0);
 
-  const createBinder=()=>{if(!newBinderName.trim())return;const id=Date.now().toString();setBinders(p=>[...p,{id,name:newBinderName.trim(),cards:[]}]);setActiveBinder(id);setNewBinderName("");setShowNewBinder(false);toast(`Created "${newBinderName.trim()}"`)};
-  const deleteBinder=(id)=>{if(id==="main")return;setBinders(p=>p.filter(b=>b.id!==id));if(activeBinder===id)setActiveBinder("main");toast("Binder deleted","error")};
+  const createBinder=async()=>{if(!newBinderName.trim())return;
+    let bid=Date.now().toString();
+    if(supabase){const{data:sb}=await bindersApi.create(newBinderName.trim());if(sb)bid=sb.id;}
+    setBinders(p=>[...p,{id:bid,name:newBinderName.trim(),cards:[]}]);setActiveBinder(bid);setNewBinderName("");setShowNewBinder(false);toast(`Created "${newBinderName.trim()}"`)};
+  const deleteBinder=(id)=>{if(id==="main")return;setBinders(p=>p.filter(b=>b.id!==id));if(activeBinder===id)setActiveBinder("main");toast("Binder deleted","error");if(supabase)enqueueWrite(()=>bindersApi.delete(id))};
   const toggleSelect=(id)=>setSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n});
   const selectAll=()=>setSelected(new Set(items.map(c=>c.id)));
   const bulkDelete=()=>{setColl(p=>p.filter(c=>!selected.has(c.id)));toast(`Removed ${selected.size} cards`,"error");setSelected(new Set());setSelectMode(false)};
