@@ -1274,6 +1274,10 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
     {/* Vault Stats overview */}
     {subTab==="stats"&&<div style={{marginBottom:16}}>
       <h2 style={{margin:"0 0 12px",fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Your Vault</h2>
+      {vs.totalCards===0&&<div style={{textAlign:"center",padding:"20px",color:T.textDim,fontFamily:F.body}}>
+        <div style={{fontSize:13,marginBottom:8}}>Your vault is empty. Search for cards and add them to your collection to see stats here.</div>
+        <div style={{fontSize:11,fontStyle:"italic"}}>{randomFlavor("binder")}</div>
+      </div>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
         {[["Total Cards",vs.totalCards,T.text],["Vault Value","$"+vs.totalValue.toFixed(2),T.green],["Unique Cards",vs.uniqueCards,T.text],["Sets Owned",vs.sets,T.text],[`${vs.deckCount} Decks`,`${vs.binderCount} Binders`,T.textMuted],["Foil Cards",vs.foilCount,T.purple]].map(([l,v,c],i)=>
           <div key={i} style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,textAlign:"center",boxShadow:S.cardFrame,backgroundImage:S.texture}}>
@@ -1944,6 +1948,69 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TRADE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// Life counter + game tools
+function GameTools({toast}) {
+  const [p1,setP1]=useState(40);const [p2,setP2]=useState(40);
+  const [p1cmd,setP1cmd]=useState(0);const [p2cmd,setP2cmd]=useState(0);
+  const [format,setFormat]=useState("commander");
+  const [coinResult,setCoinResult]=useState(null);const [diceResult,setDiceResult]=useState(null);
+  const startLife={commander:40,standard:20,modern:20,pioneer:20,legacy:20,vintage:20,pauper:20};
+
+  const reset=()=>{const l=startLife[format]||20;setP1(l);setP2(l);setP1cmd(0);setP2cmd(0)};
+  const flip=()=>{const r=Math.random()<.5?"Heads":"Tails";setCoinResult(r);toast(r);setTimeout(()=>setCoinResult(null),2000)};
+  const roll=(sides=20)=>{const r=Math.floor(Math.random()*sides)+1;setDiceResult(r);toast(`Rolled ${r}`);setTimeout(()=>setDiceResult(null),2000)};
+
+  const LifeBtn=({val,set,label})=><div style={{flex:1,textAlign:"center"}}>
+    <div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginBottom:4}}>{label}</div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+      <button onClick={()=>set(v=>v-1)} style={{width:40,height:40,borderRadius:20,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:18,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F.body}}>{"\u2212"}</button>
+      <div style={{fontSize:36,fontWeight:900,color:val<=0?T.red:T.accent,fontFamily:F.heading,minWidth:50,textAlign:"center",textShadow:val<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{val}</div>
+      <button onClick={()=>set(v=>v+1)} style={{width:40,height:40,borderRadius:20,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:18,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F.body}}>+</button>
+    </div>
+  </div>;
+
+  return <div style={{marginBottom:16}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Life Counter</div>
+      <div style={{display:"flex",gap:6}}>
+        <select value={format} onChange={e=>{setFormat(e.target.value);const l=startLife[e.target.value]||20;setP1(l);setP2(l)}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
+          {Object.keys(startLife).map(f=><option key={f} value={f}>{f[0].toUpperCase()+f.slice(1)}</option>)}
+        </select>
+        <button onClick={reset} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>Reset</button>
+      </div>
+    </div>
+    <div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:16,boxShadow:S.cardFrame,backgroundImage:S.texture}}>
+      <div style={{display:"flex",gap:8}}>
+        <LifeBtn val={p1} set={setP1} label="You"/>
+        <div style={{width:1,background:T.cardBorder}}/>
+        <LifeBtn val={p2} set={setP2} label="Opponent"/>
+      </div>
+      {format==="commander"&&<div style={{display:"flex",gap:16,justifyContent:"center",marginTop:10}}>
+        <div style={{textAlign:"center"}}><div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Cmdr Dmg Taken</div>
+          <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center",marginTop:2}}>
+            <button onClick={()=>setP1cmd(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <span style={{fontSize:16,fontWeight:700,color:p1cmd>=21?T.red:T.textMuted,fontFamily:F.heading,minWidth:24,textAlign:"center"}}>{p1cmd}</span>
+            <button onClick={()=>{setP1cmd(v=>v+1);setP1(v=>v-1)}} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          </div>
+        </div>
+        <div style={{textAlign:"center"}}><div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>Cmdr Dmg Dealt</div>
+          <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"center",marginTop:2}}>
+            <button onClick={()=>setP2cmd(v=>Math.max(0,v-1))} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <span style={{fontSize:16,fontWeight:700,color:p2cmd>=21?T.green:T.textMuted,fontFamily:F.heading,minWidth:24,textAlign:"center"}}>{p2cmd}</span>
+            <button onClick={()=>setP2cmd(v=>v+1)} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          </div>
+        </div>
+      </div>}
+    </div>
+    {/* Coin + Dice */}
+    <div style={{display:"flex",gap:8,marginTop:8}}>
+      <button onClick={flip} style={{flex:1,padding:"10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:coinResult?T.accent:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>{coinResult||"Flip Coin"}</button>
+      <button onClick={()=>roll(20)} style={{flex:1,padding:"10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult?T.accent:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>{diceResult?`D20: ${diceResult}`:"Roll D20"}</button>
+      <button onClick={()=>roll(6)} style={{padding:"10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>D6</button>
+    </div>
+  </div>;
+}
+
 function TradeView({toast}) {
   const [give,setGive]=useState([]);const [recv,setRecv]=useState([]);
   const [side,setSide]=useState(null);const [q,setQ]=useState("");const [results,setResults]=useState([]);
@@ -1991,7 +2058,9 @@ function TradeView({toast}) {
   </div>;
 
   return <div style={{padding:16}}>
-    {(give.length===0&&recv.length===0)&&<div style={{textAlign:"center",padding:"20px 20px 28px",color:T.textDim}}>
+    <GameTools toast={toast}/>
+
+    {(give.length===0&&recv.length===0)&&<div style={{textAlign:"center",padding:"12px 20px 20px",color:T.textDim}}>
       <div style={{fontSize:14,color:T.textMuted,marginBottom:4,fontFamily:F.body}}>Evaluate your trades in real-time</div>
       <div style={{fontSize:13,fontStyle:"italic",lineHeight:1.6,fontFamily:F.body}}>{randomFlavor("trade")}</div>
     </div>}
