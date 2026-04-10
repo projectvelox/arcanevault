@@ -60,6 +60,22 @@ async function fetchAutocomplete(query) {
   } catch { return []; }
 }
 
+async function fetchSetCards(setCode) {
+  const cards = [];
+  let url = `https://api.scryfall.com/cards/search?q=set:${setCode}+is:booster&unique=cards&order=collector_number`;
+  try {
+    while (url) {
+      const res = await fetch(url);
+      if (!res.ok) break;
+      const json = await res.json();
+      cards.push(...(json.data || []));
+      url = json.has_more ? json.next_page : null;
+      if (url) await new Promise(r => setTimeout(r, 80));
+    }
+  } catch {}
+  return cards;
+}
+
 async function fetchRulings(rulingsUri) {
   if (!rulingsUri) return [];
   try {
@@ -201,6 +217,27 @@ function validateDeck(deck) {
   const restrictedCards = deck.cards.filter(c => c.legalities && c.legalities[deck.format] === "restricted" && c.qty > 1);
   if (restrictedCards.length) warnings.push({ msg: `Restricted (max 1): ${restrictedCards.map(c => c.name).join(", ")}`, severity: "warn" });
 
+  // Companion validation
+  const companions = deck.cards.filter(c => c.board === "companion");
+  if (companions.length > 1) warnings.push({ msg: "Only 1 companion allowed", severity: "error" });
+  if (companions.length === 1) {
+    const comp = companions[0];
+    const compName = comp.name?.toLowerCase() || "";
+    const nonLandMain = deck.cards.filter(c => (c.board === "main" || c.board === "commander") && !(c.type_line || "").toLowerCase().includes("land"));
+    if (compName.includes("lurrus")) {
+      const violations = nonLandMain.filter(c => c.cmc > 2 && (c.type_line || "").match(/creature|artifact|enchantment/i));
+      if (violations.length) warnings.push({ msg: `Lurrus: ${violations.length} permanents with MV>2 (${violations.slice(0,2).map(c=>c.name).join(", ")})`, severity: "error" });
+    }
+    if (compName.includes("yorion")) {
+      const mainCount = deck.cards.filter(c => c.board === "main").reduce((a, c) => a + c.qty, 0);
+      if (mainCount < 80) warnings.push({ msg: `Yorion requires 80+ cards in main (have ${mainCount})`, severity: "error" });
+    }
+    if (compName.includes("kaheera")) {
+      const nonType = nonLandMain.filter(c => (c.type_line || "").toLowerCase().includes("creature") && !["cat","elemental","nightmare","dinosaur","beast"].some(t => (c.type_line || "").toLowerCase().includes(t)));
+      if (nonType.length) warnings.push({ msg: `Kaheera: ${nonType.length} creatures outside allowed types`, severity: "error" });
+    }
+  }
+
   return warnings;
 }
 
@@ -256,6 +293,22 @@ const T = {
 // Fonts
 const F = { heading: "'Cinzel', serif", body: "'Cormorant Garamond', 'Palatino Linotype', serif", ui: "'Cormorant Garamond', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" };
 const GLOW = "0 0 20px rgba(201,169,110,.25)";
+
+// Error retry queue for Supabase writes
+const retryQueue = [];
+async function enqueueWrite(fn) {
+  try { return await fn(); }
+  catch (e) { retryQueue.push(fn); console.warn("Write queued for retry:", e.message); return { error: e }; }
+}
+// Process retry queue periodically
+if (typeof window !== "undefined") {
+  setInterval(async () => {
+    while (retryQueue.length > 0) {
+      const fn = retryQueue[0];
+      try { await fn(); retryQueue.shift(); } catch { break; }
+    }
+  }, 30000);
+}
 
 // MTG-style CSS patterns
 const S = {
@@ -699,21 +752,18 @@ export default function App() {
     const binderName=binders.find(b=>b.id===activeBinder)?.name||"collection";
     toast(`Added ${card.name} to ${binderName}`);
     // Persist to Supabase if logged in
-    if(isOnline.current){
-      try{await cardsApi.add(activeBinder,card,meta)}catch(e){console.error("Supabase sync error:",e)}
-    }
+    if(isOnline.current) enqueueWrite(()=>cardsApi.add(activeBinder,card,meta));
   },[activeBinder,binders,toast]);
   const addDeck=useCallback(async(did,card,board="main")=>{
     setDecks(p=>p.map(d=>{if(d.id!==did)return d;const ex=d.cards.find(c=>c.id===card.id&&c.board===board);if(ex)return{...d,cards:d.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
-    if(isOnline.current){
-      try{await deckCardsApi.add(did,card,board)}catch(e){console.error("Supabase sync error:",e)}
-    }
+    if(isOnline.current) enqueueWrite(()=>deckCardsApi.add(did,card,board));
   },[]);
 
   const tabs=[{id:"search",icon:I.search,label:"Search"},{id:"vault",icon:I.vault,label:"Vault"},{id:"trade",icon:I.trade,label:"Trade"}];
   const hdr={search:["Search","Scry the Multiverse"],vault:["Vault","Decks & Collection"],trade:["Trade","Card Evaluator"]};
 
-  return <div style={{minHeight:"100vh",background:S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative",animation:"blindEternities 20s ease-in-out infinite"}}>
+  const isOled=settings.theme==="oled";
+  return <div style={{minHeight:"100vh",background:isOled?"#000":S.vignette,fontFamily:F.ui,color:T.text,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto",position:"relative",animation:isOled?undefined:"blindEternities 20s ease-in-out infinite"}}>
     <ToastContainer toasts={toasts}/>
     {/* Branded header with filigree */}
     <div style={{padding:"14px 18px 10px",flexShrink:0,background:`linear-gradient(180deg, ${T.surface} 0%, transparent 100%)`,borderBottom:"1px solid transparent",borderImage:S.filigree,borderImageSlice:1,display:"flex",alignItems:"center",gap:10}}>
@@ -743,6 +793,11 @@ export default function App() {
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.textMuted,fontFamily:F.body}}>Default Format
           <select value={settings.defaultFormat} onChange={e=>setSettings(p=>({...p,defaultFormat:e.target.value}))} style={{padding:"5px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,fontFamily:F.body}}>
             {Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+        </label>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:T.textMuted,fontFamily:F.body}}>Theme
+          <select value={settings.theme||"dark"} onChange={e=>setSettings(p=>({...p,theme:e.target.value}))} style={{padding:"5px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,fontFamily:F.body}}>
+            <option value="dark">Dark</option><option value="oled">OLED Black</option>
           </select>
         </label>
       </div>
@@ -817,6 +872,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [results,setResults]=useState([]);const [total,setTotal]=useState(0);const [loading,setLoading]=useState(false);
   const [slideIdx,setSlideIdx]=useState(-1);const [showAdd,setShowAdd]=useState(false);
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
+  const [browseSet,setBrowseSet]=useState(null);const [setCards,setSetCards]=useState([]);const [sLoading,setSLoading]=useState(false);
   const [cotd,setCotd]=useState(null);
   const [autocomplete,setAutocomplete]=useState([]);const [acFocused,setAcFocused]=useState(false);
   const [showBurst,setShowBurst]=useState(false);
@@ -859,7 +915,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     <div style={{position:"sticky",top:0,background:T.bg,paddingTop:12,paddingBottom:8,zIndex:10}}>
       <div style={{display:"flex",gap:8}}>
         <div style={{position:"relative",flex:1}}>
-          <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell..." style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
+          <input value={q} onChange={e=>setQ(e.target.value)} onFocus={()=>setAcFocused(true)} onBlur={()=>setTimeout(()=>setAcFocused(false),200)} placeholder="Name a spell... (try o:draw or t:angel)" style={{width:"100%",padding:"14px 16px 14px 42px",borderRadius:14,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:16,outline:"none",boxSizing:"border-box",fontFamily:F.body,boxShadow:S.insetInput}}/>
           <span style={{position:"absolute",left:14,top:14,opacity:.4}}>{I.search(T.textDim)}</span>
           {autocomplete.length>0&&acFocused&&<div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:4,background:T.surface,border:`1px solid ${T.cardBorder}`,borderRadius:8,overflow:"hidden",zIndex:20,boxShadow:"0 8px 24px rgba(0,0,0,.5)",maxHeight:200,overflowY:"auto"}}>
             {autocomplete.slice(0,8).map(name=><div key={name} onMouseDown={()=>{setQ(name);setAutocomplete([])}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.text,fontFamily:F.body,borderBottom:`1px solid ${T.cardBorder}`}}>{name}</div>)}
@@ -871,7 +927,8 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4,alignItems:"center"}}>
         <ColorPills colors={colors} setColors={setColors}/>
         <TypeSelect type={type} setType={setType}/>
-        <select value={set} onChange={e=>setSet(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
+        <select value={set} onChange={e=>{setSet(e.target.value);if(e.target.value){setBrowseSet(null)}}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
+        {set&&<button onClick={async()=>{if(browseSet===set){setBrowseSet(null);return;}setBrowseSet(set);setSLoading(true);const c=await fetchSetCards(set);setSetCards(c);setSLoading(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${browseSet?T.gold:T.cardBorder}`,background:browseSet?T.goldGlow:"transparent",color:browseSet?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>{sLoading?"...":"Checklist"}</button>}
         {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("");setRarity("");setCmcOp("");setOText("");setShowAdv(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
         <button onClick={()=>setShowAdv(!showAdv)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${showAdv||(rarity||cmcOp||oText)?T.gold+"66":T.cardBorder}`,background:showAdv?T.goldGlow:"transparent",color:showAdv||rarity||cmcOp||oText?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>More</button>
       </div>
@@ -884,6 +941,52 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         {loading?loadPhrase():hasQuery?`${total.toLocaleString()} cards found (showing ${results.length})`:""}
       </div>
     </div>
+
+    {/* Set Completion Tracker */}
+    {browseSet&&setCards.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginBottom:12,boxShadow:S.cardFrame}}>
+      {(()=>{
+        const owned=setCards.filter(c=>allCollCards.has(c.id));
+        const pct=setCards.length?Math.round((owned.length/setCards.length)*100):0;
+        const byRarity={mythic:[],rare:[],uncommon:[],common:[]};
+        setCards.forEach(c=>{const r=c.rarity||"common";if(byRarity[r])byRarity[r].push(c)});
+        return <>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{sets.find(s=>s.code===browseSet)?.name||browseSet.toUpperCase()}</div>
+            <button onClick={()=>setBrowseSet(null)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.close(T.textDim)}</button>
+          </div>
+          <div style={{display:"flex",gap:12,marginBottom:10,alignItems:"center"}}>
+            <div style={{fontSize:28,fontWeight:900,color:pct===100?T.green:T.accent,fontFamily:F.heading}}>{pct}%</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:11,color:T.textMuted,fontFamily:F.body,marginBottom:4}}>{owned.length} / {setCards.length} cards collected</div>
+              <div style={{height:6,borderRadius:3,background:T.cardInner,overflow:"hidden"}}>
+                <div style={{width:`${pct}%`,height:"100%",borderRadius:3,background:pct===100?T.green:`linear-gradient(90deg,${T.gold},${T.goldDark})`,transition:"width .3s"}}/>
+              </div>
+            </div>
+          </div>
+          {/* Rarity breakdown */}
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            {[["mythic",T.mythicOrange],["rare","#E8C349"],["uncommon","#B8C4D0"],["common",T.textDim]].map(([r,c])=>{
+              const total=byRarity[r]?.length||0;const own=byRarity[r]?.filter(cd=>allCollCards.has(cd.id)).length||0;
+              return total>0&&<div key={r} style={{fontSize:10,color:c,fontFamily:F.body}}>{r[0].toUpperCase()}: {own}/{total}</div>;
+            })}
+          </div>
+          {/* Missing cards list */}
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            <div style={{fontSize:10,color:T.textMuted,fontFamily:F.body,marginBottom:4,fontWeight:600}}>Missing Cards:</div>
+            {setCards.filter(c=>!allCollCards.has(c.id)).slice(0,30).map(c=>(
+              <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"3px 0",fontSize:11,color:T.text,fontFamily:F.body}}>
+                <span style={{color:RARITY_CLR[c.rarity]||T.textDim,fontWeight:700,width:14,textAlign:"center"}}>{(c.rarity||"c")[0].toUpperCase()}</span>
+                <span>{c.collector_number}</span>
+                <span style={{flex:1}}>{c.name}</span>
+                <span style={{color:T.green,fontSize:10}}>{fmt(c.prices?.usd)}</span>
+              </div>
+            ))}
+            {setCards.filter(c=>!allCollCards.has(c.id)).length>30&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginTop:4}}>...and {setCards.filter(c=>!allCollCards.has(c.id)).length-30} more</div>}
+            {setCards.filter(c=>!allCollCards.has(c.id)).length===0&&<div style={{fontSize:12,color:T.green,fontFamily:F.body,textAlign:"center",padding:8}}>Set complete!</div>}
+          </div>
+        </>;
+      })()}
+    </div>}
 
     {loading&&results.length===0&&<SkeletonGrid count={6}/>}
 
@@ -1014,6 +1117,16 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
           </div>
         </div>
       </div>}
+      {/* Duplicate detection */}
+      {(()=>{
+        const dupes=new Map();
+        binders.forEach(b=>b.cards.forEach(c=>{const k=c.name||c.scryfall_id;if(!dupes.has(k))dupes.set(k,[]);dupes.get(k).push(b.name)}));
+        const realDupes=[...dupes.entries()].filter(([,bs])=>bs.length>1).slice(0,5);
+        return realDupes.length>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginTop:12,boxShadow:S.cardFrame}}>
+          <div style={{fontSize:10,color:"#E8C349",fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:6,fontFamily:F.heading}}>Cards in Multiple Binders</div>
+          {realDupes.map(([name,bs])=><div key={name} style={{fontSize:11,color:T.textMuted,fontFamily:F.body,marginBottom:2}}>{name} \u2014 <span style={{color:T.textDim}}>{[...new Set(bs)].join(", ")}</span></div>)}
+        </div>;
+      })()}
     </div>}
 
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
@@ -1585,6 +1698,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
             {LANGUAGES.map(l=><option key={l} value={l}>{LANG_LABELS[l]}</option>)}
           </select>
         </div>
+        {/* Per-card notes */}
+        <input value={cc?.notes||""} onChange={e=>editCardMeta(card.id,"notes",e.target.value)} placeholder="Card notes..." style={{width:"100%",marginTop:6,padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,fontFamily:F.body,boxSizing:"border-box",boxShadow:S.insetInput}}/>
       </div>}}
     />}
   </>;
