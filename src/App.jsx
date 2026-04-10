@@ -103,7 +103,9 @@ function parseDeckList(text) {
     const lower = line.toLowerCase();
     if (["sideboard","sideboard:","// sideboard"].includes(lower)) { board = "sideboard"; continue; }
     if (["commander","commander:","// commander"].includes(lower)) { board = "commander"; continue; }
-    if (["mainboard","mainboard:","main:","// mainboard"].includes(lower)) { board = "main"; continue; }
+    if (["companion","companion:","// companion"].includes(lower)) { board = "companion"; continue; }
+    if (["maybeboard","maybeboard:","// maybeboard","maybe","maybe:"].includes(lower)) { board = "maybeboard"; continue; }
+    if (["mainboard","mainboard:","main:","// mainboard","deck","deck:"].includes(lower)) { board = "main"; continue; }
     const match = line.match(/^(\d+)x?\s+(.+)$/i);
     if (match) entries.push({ qty: parseInt(match[1]), name: match[2].trim(), board });
     else entries.push({ qty: 1, name: line, board });
@@ -128,12 +130,17 @@ function parseCollectionCSV(text) {
   return entries;
 }
 
-function exportDeckList(deck) {
+function exportDeckList(deck, format = "text") {
   let out = "";
-  const cmdr = deck.cards.filter(c => c.board === "commander"), main = deck.cards.filter(c => c.board === "main"), side = deck.cards.filter(c => c.board === "sideboard");
-  if (cmdr.length) { out += "Commander\n"; cmdr.forEach(c => { out += `${c.qty} ${c.name}\n`; }); out += "\n"; }
-  if (main.length) main.forEach(c => { out += `${c.qty} ${c.name}\n`; });
-  if (side.length) { out += "\nSideboard\n"; side.forEach(c => { out += `${c.qty} ${c.name}\n`; }); }
+  const cmdr = deck.cards.filter(c => c.board === "commander"), main = deck.cards.filter(c => c.board === "main");
+  const side = deck.cards.filter(c => c.board === "sideboard"), companion = deck.cards.filter(c => c.board === "companion");
+  const maybe = deck.cards.filter(c => c.board === "maybeboard");
+  const line = (c) => format === "arena" ? `${c.qty} ${c.name} (${(c.set||"").toUpperCase()}) ${c.collector_number||""}` : `${c.qty} ${c.name}`;
+  if (cmdr.length) { out += "Commander\n"; cmdr.forEach(c => { out += line(c) + "\n"; }); out += "\n"; }
+  if (companion.length) { out += "Companion\n"; companion.forEach(c => { out += line(c) + "\n"; }); out += "\n"; }
+  if (main.length) main.forEach(c => { out += line(c) + "\n"; });
+  if (side.length) { out += "\nSideboard\n"; side.forEach(c => { out += line(c) + "\n"; }); }
+  if (maybe.length) { out += "\nMaybeboard\n"; maybe.forEach(c => { out += line(c) + "\n"; }); }
   return out.trim();
 }
 
@@ -165,6 +172,30 @@ function validateDeck(deck) {
   const violations = [];
   mainCards.forEach(c => { if (!BASIC_LANDS.includes(c.name.toLowerCase()) && c.qty > rules.copies) violations.push(`${c.name} (${c.qty}x, max ${rules.copies})`); });
   if (violations.length) warnings.push({ msg: `Over copy limit: ${violations.join(", ")}`, severity: "error" });
+
+  // Commander color identity validation
+  if (deck.format === "commander") {
+    const commanders = deck.cards.filter(c => c.board === "commander");
+    if (commanders.length === 0) warnings.push({ msg: "No commander designated", severity: "warn" });
+    else {
+      const cmdCI = new Set();
+      commanders.forEach(c => (c.color_identity || []).forEach(ci => cmdCI.add(ci)));
+      const ciViolations = [];
+      deck.cards.filter(c => c.board === "main").forEach(c => {
+        const cardCI = c.color_identity || [];
+        if (cardCI.some(ci => !cmdCI.has(ci))) ciViolations.push(c.name);
+      });
+      if (ciViolations.length) warnings.push({ msg: `Outside color identity: ${ciViolations.slice(0, 3).join(", ")}${ciViolations.length > 3 ? ` +${ciViolations.length - 3} more` : ""}`, severity: "error" });
+    }
+  }
+
+  // Banned card check (uses Scryfall legalities data on cards)
+  const bannedCards = deck.cards.filter(c => c.legalities && c.legalities[deck.format] === "banned");
+  if (bannedCards.length) warnings.push({ msg: `Banned: ${bannedCards.map(c => c.name).join(", ")}`, severity: "error" });
+
+  const restrictedCards = deck.cards.filter(c => c.legalities && c.legalities[deck.format] === "restricted" && c.qty > 1);
+  if (restrictedCards.length) warnings.push({ msg: `Restricted (max 1): ${restrictedCards.map(c => c.name).join(", ")}`, severity: "warn" });
+
   return warnings;
 }
 
@@ -784,7 +815,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
 
   const sortedDecks=useMemo(()=>{const d=[...decks];if(sortBy==="name")d.sort((a,b)=>a.name.localeCompare(b.name));else if(sortBy==="format")d.sort((a,b)=>a.format.localeCompare(b.format));else d.sort((a,b)=>(b.ts||0)-(a.ts||0));return d},[decks,sortBy]);
 
-  const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);toast(`Created "${name}"`)};
+  const create=()=>{if(!name.trim())return;const d={id:Date.now().toString(),name,format,cards:[],notes:"",ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);toast(`Created "${name}"`)};
   const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk)toast(`Deleted "${dk.name}"`,"error")};
   const cloneDeck=(d)=>{const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:[...d.cards],ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`)};
 
@@ -871,7 +902,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [hand,setHand]=useState([]);const [lib,setLib]=useState([]);const [mulls,setMulls]=useState(0);
   const [drawn,setDrawn]=useState([]);const [turn,setTurn]=useState(0);
   const [editing,setEditing]=useState(false);const [editName,setEditName]=useState("");
-  const [mullPhase,setMullPhase]=useState(null); // null or array of cards to put back
+  const [mullPhase,setMullPhase]=useState(null);
+  const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
@@ -892,7 +924,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     return{...d,cards};
   }));
 
-  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`);};
+  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`)};
+  const updateNotes=(text)=>setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
 
   const stats=useMemo(()=>{
     const main=deck.cards.filter(c=>c.board==="main"||c.board==="commander");
@@ -922,7 +955,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
-  const handleExport=()=>{navigator.clipboard.writeText(exportDeckList(deck)).then(()=>toast("Decklist transcribed to clipboard")).catch(()=>window.prompt("Copy:",exportDeckList(deck)))};
+  const handleExport=(fmt="text")=>{const text=exportDeckList(deck,fmt);navigator.clipboard.writeText(text).then(()=>toast(`Decklist copied (${fmt==="arena"?"Arena":"text"} format)`)).catch(()=>window.prompt("Copy:",text))};
 
   const mx=Math.max(...Object.values(stats?.curve||{0:1}),1);
   const totalClrs=Object.values(stats?.clrs||{}).reduce((a,b)=>a+b,0)||1;
@@ -981,7 +1014,14 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     <div style={{display:"flex",gap:6,marginBottom:12}}>
       <button onClick={newGame} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:showSim?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.simulate(T.gold)} Playtest</button>
       <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Import</button>
-      <button onClick={handleExport} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
+      <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
+      <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:9,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
+    </div>
+
+    {/* Deck notes */}
+    <div style={{marginBottom:10}}>
+      <button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,padding:0,textDecoration:"underline"}}>{showNotes?"Hide notes":"Notes"}{deck.notes?" \u2022":"..."}</button>
+      {showNotes&&<textarea value={deck.notes||""} onChange={e=>updateNotes(e.target.value)} placeholder="Deck strategy, matchup notes, card choices..." style={{width:"100%",marginTop:6,height:60,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,resize:"vertical",boxSizing:"border-box",fontFamily:F.body,lineHeight:1.5,boxShadow:S.insetInput}}/>}
     </div>
 
     {showImport&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
@@ -1034,6 +1074,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <button onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}} style={{padding:"6px 10px",borderRadius:4,border:"none",background:T.gold,color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Main</button>
           <button onClick={()=>{addDeck(deckId,c,"sideboard");toast(`${c.name} to sideboard`)}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Side</button>
           {deck.format==="commander"&&<button onClick={()=>{addDeck(deckId,c,"commander");toast(`${c.name} as commander`)}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.gold}66`,background:T.goldGlow,color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Cmdr</button>}
+          <button onClick={()=>{addDeck(deckId,c,"maybeboard");toast(`${c.name} to maybeboard`)}} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Maybe</button>
         </div>
       </div>})}
     </div>}
@@ -1067,7 +1108,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       </div>;
     })}
 
-    {viewMode==="list"&&["commander","main","sideboard"].map(board=>{
+    {viewMode==="list"&&["commander","companion","main","sideboard","maybeboard"].map(board=>{
       const cards=deck.cards.filter(c=>c.board===board);if(!cards.length)return null;
       return <div key={board} style={{marginBottom:14}}>
         <div style={{fontSize:11,fontWeight:700,color:T.gold,textTransform:"uppercase",marginBottom:6,letterSpacing:.5,fontFamily:F.heading}}>{board} ({cards.reduce((a,c)=>a+c.qty,0)})</div>
@@ -1100,9 +1141,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     {slideIdx>=0&&allCards[slideIdx]&&<CardSlider cards={allCards} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)}
       actions={card=>{const curBoard=card.board||"main";return<div>
         <div style={{display:"flex",gap:6,marginBottom:8}}>
-          {curBoard!=="main"&&<button onClick={()=>{moveCard(card.id,curBoard,"main");toast(`Moved to main`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>To Main</button>}
-          {curBoard!=="sideboard"&&<button onClick={()=>{moveCard(card.id,curBoard,"sideboard");toast(`Moved to sideboard`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>To Side</button>}
-          {deck.format==="commander"&&curBoard!=="commander"&&<button onClick={()=>{moveCard(card.id,curBoard,"commander");toast(`Set as commander`);setSlideIdx(-1)}} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:T.goldGlow,color:T.gold,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Commander</button>}
+          {curBoard!=="main"&&<button onClick={()=>{moveCard(card.id,curBoard,"main");toast(`Moved to main`);setSlideIdx(-1)}} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Main</button>}
+          {curBoard!=="sideboard"&&<button onClick={()=>{moveCard(card.id,curBoard,"sideboard");toast(`Moved to sideboard`);setSlideIdx(-1)}} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.textMuted}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Side</button>}
+          {deck.format==="commander"&&curBoard!=="commander"&&<button onClick={()=>{moveCard(card.id,curBoard,"commander");toast(`Set as commander`);setSlideIdx(-1)}} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.gold}`,background:T.goldGlow,color:T.gold,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Cmdr</button>}
+          {curBoard!=="maybeboard"&&<button onClick={()=>{moveCard(card.id,curBoard,"maybeboard");toast(`Moved to maybeboard`);setSlideIdx(-1)}} style={{flex:1,padding:8,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Maybe</button>}
         </div>
         <button onClick={()=>{rmCard(card.id,curBoard);toast(`Cut ${card.name}`);setSlideIdx(-1)}} style={{width:"100%",padding:12,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Cut from Deck</button>
       </div>}}
