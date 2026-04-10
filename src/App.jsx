@@ -462,6 +462,21 @@ const T = {
 const F = { heading: "'Cinzel', serif", body: "'Cormorant Garamond', 'Palatino Linotype', serif", ui: "'Cormorant Garamond', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif" };
 const GLOW = "0 0 20px rgba(201,169,110,.25)";
 
+// Responsive typography using clamp() — scales between 320px and 480px viewport
+const FS = {
+  hero:      "clamp(1.375rem, 1.05rem + 1.63vw, 1.75rem)",   // 22–28px
+  h1:        "clamp(1.125rem, 0.85rem + 1.38vw, 1.5rem)",     // 18–24px
+  cardDetail:"clamp(1.25rem, 0.975rem + 1.38vw, 1.625rem)",   // 20–26px
+  cardList:  "clamp(0.8125rem, 0.7rem + 0.56vw, 0.9375rem)",  // 13–15px
+  body:      "clamp(0.8125rem, 0.725rem + 0.44vw, 0.875rem)", // 13–14px
+  secondary: "clamp(0.75rem, 0.675rem + 0.38vw, 0.8125rem)",  // 12–13px
+  label:     "clamp(0.6875rem, 0.625rem + 0.31vw, 0.75rem)",  // 11–12px
+  badge:     "clamp(0.625rem, 0.575rem + 0.25vw, 0.6875rem)", // 10–11px
+  statSm:    "clamp(1rem, 0.8rem + 1vw, 1.25rem)",            // 16–20px
+  statLg:    "clamp(1.75rem, 1.25rem + 2.5vw, 2.25rem)",      // 28–36px
+};
+const LH = { hero:1.1, h1:1.2, cardDetail:1.2, cardList:1.3, body:1.5, secondary:1.4, label:1.3, badge:1.2, statSm:1.1, statLg:1.0 };
+
 // Error retry queue for Supabase writes
 const retryQueue = [];
 const MAX_RETRY_QUEUE = 50;
@@ -760,7 +775,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         {card.card_faces?.length>1&&card.card_faces[1]?.image_uris&&<button onClick={()=>setFlipped(!flipped)} style={{position:"absolute",bottom:8,right:8,width:36,height:36,borderRadius:18,background:"rgba(0,0,0,.7)",border:`1.5px solid ${T.gold}`,color:T.gold,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}} title="Flip card">{"\u21BB"}</button>}
       </div>
       <div style={{marginTop:12,textAlign:"center",width:"100%",maxWidth:340}}>
-        <h3 style={{margin:"0 0 4px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{card.name}</h3>
+        <h3 style={{margin:"0 0 4px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{card.name}</h3>
         <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center",flexWrap:"wrap"}}>
           <Cost c={card.mana_cost} sz={20}/>
           <span style={{fontSize:13,color:T.textMuted,fontFamily:F.body}}>{card.type_line}</span>
@@ -1016,7 +1031,7 @@ export default function App() {
         {I.sparkle("#0C0E14")}
       </div>
       <div style={{flex:1}}>
-        <div style={{fontSize:17,fontWeight:700,color:T.accent,lineHeight:1.1,fontFamily:F.heading,letterSpacing:1.2,textTransform:"uppercase"}}>{hdr[tab][0]}</div>
+        <div style={{fontSize:FS.h1,fontWeight:700,color:T.accent,lineHeight:LH.h1,fontFamily:F.heading,letterSpacing:1.2,textTransform:"uppercase"}}>{hdr[tab][0]}</div>
         <div style={{fontSize:10,fontWeight:600,letterSpacing:2,color:T.textDim,textTransform:"uppercase",marginTop:1,fontFamily:F.body}}>{hdr[tab][1]}</div>
       </div>
       <button onClick={()=>setShowSettings(!showSettings)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
@@ -1051,7 +1066,7 @@ export default function App() {
     {/* Auth modal */}
     {authMode&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.9)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}} onClick={()=>setAuthMode(null)}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,borderRadius:8,padding:28,maxWidth:340,width:"100%",border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
-        <div style={{fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,textAlign:"center"}}>{authMode==="signup"?"Create Account":"Welcome Back"}</div>
+        <div style={{fontSize:FS.h1,lineHeight:LH.h1,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,textAlign:"center"}}>{authMode==="signup"?"Create Account":"Welcome Back"}</div>
         <div style={{fontSize:11,color:T.textDim,textAlign:"center",marginBottom:16,fontFamily:F.body}}>{authMode==="signup"?"Join the Multiverse":"Enter the Vault"}</div>
         {authError&&<div style={{padding:"8px 12px",borderRadius:4,background:"#2A0F0Faa",color:T.red,fontSize:11,marginBottom:12,fontFamily:F.body}}>{authError}</div>}
         <form onSubmit={e=>{e.preventDefault();const fd=new FormData(e.target);handleAuth(fd.get("email"),fd.get("password"),fd.get("name"))}}>
@@ -1290,7 +1305,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     {!hasQuery&&!loading&&<div style={{textAlign:"center",padding:"32px 20px",color:T.textDim,position:"relative",overflow:"hidden"}}>
       {/* Floating ambient particles */}
       {[0,1,2].map(i=><div key={i} style={{position:"absolute",width:100+i*40,height:100+i*40,borderRadius:"50%",background:`radial-gradient(circle, ${T.gold}22, transparent)`,animation:`float ${7+i*2}s ease-in-out infinite`,animationDelay:`${i*2.5}s`,top:`${10+i*25}%`,left:`${10+i*30}%`,pointerEvents:"none"}}/>)}
-      <div style={{position:"relative",fontSize:26,fontWeight:900,color:T.accent,fontFamily:F.heading,letterSpacing:2.5,marginBottom:6,textTransform:"uppercase",textShadow:GLOW}}>The Blind Eternities Await</div>
+      <div style={{position:"relative",fontSize:FS.hero,lineHeight:LH.hero,fontWeight:900,color:T.accent,fontFamily:F.heading,letterSpacing:2.5,marginBottom:6,textTransform:"uppercase",textShadow:GLOW}}>The Blind Eternities Await</div>
       <div style={{fontSize:13,color:T.textMuted,fontFamily:F.body,marginBottom:20}}>Name a spell, choose your colors, or divine a card by sight</div>
       {cotd&&<div style={{position:"relative",overflow:"hidden",background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame,padding:16,textAlign:"center"}}>
         <ArtBg src={getImg(cotd)} opacity={.12} blur={30}/>
@@ -1362,7 +1377,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
   return <div style={{padding:16}}>
     {/* Vault Stats overview */}
     {subTab==="stats"&&<div style={{marginBottom:16}}>
-      <h2 style={{margin:"0 0 12px",fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Your Vault</h2>
+      <h2 style={{margin:"0 0 12px",fontSize:FS.h1,lineHeight:LH.h1,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Your Vault</h2>
       {vs.totalCards===0&&<div style={{textAlign:"center",padding:"20px",color:T.textDim,fontFamily:F.body}}>
         <div style={{fontSize:13,marginBottom:8}}>Your vault is empty. Search for cards and add them to your collection to see stats here.</div>
         <div style={{fontSize:11,fontStyle:"italic"}}>{randomFlavor("binder")}</div>
@@ -1521,7 +1536,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
     <ConfirmDialog open={!!deleteTarget} title="Delete this deck?" message="This will permanently remove the deck and all its cards. This cannot be undone." onConfirm={confirmDelete} onCancel={()=>setDeleteTarget(null)}/>
 
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-      <h2 style={{margin:0,fontSize:20,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>My Decks</h2>
+      <h2 style={{margin:0,fontSize:FS.h1,lineHeight:LH.h1,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>My Decks</h2>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
           <option value="recent">Recent</option><option value="name">Name</option><option value="format">Format</option>
@@ -1709,8 +1724,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <div style={{position:"relative",background:"rgba(12,14,20,.75)",borderRadius:4,padding:12,margin:-4}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
         <div>
-          {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
-          :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:22,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
+          {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+          :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
           <div style={{display:"flex",gap:8,fontSize:12,color:T.textDim,fontFamily:F.body,flexWrap:"wrap",alignItems:"center"}}>
             <span>{deck.format[0].toUpperCase()+deck.format.slice(1)}</span>
             <span>{stats.mainN} main{stats.sideN>0?` / ${stats.sideN} side`:""}</span>
@@ -2091,7 +2106,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     :<VirtualList items={items} rowHeight={72} renderItem={(c,i)=><div key={c.id} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture,border:`1px solid ${selected.has(c.id)?T.gold:"transparent"}`,height:68,boxSizing:"border-box"}}>
       <img src={getImg(c,"small")} alt={c.name} loading="lazy" style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:14,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
+        <div style={{fontSize:FS.cardList,lineHeight:LH.cardList,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div>
         <div style={{display:"flex",gap:4,alignItems:"center",marginTop:2,flexWrap:"wrap"}}><Cost c={c.mana_cost} sz={12}/><span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{c.set_name}</span>
           {c.condition&&c.condition!=="NM"&&<span style={{fontSize:10,padding:"1px 4px",borderRadius:3,background:c.condition==="LP"?"#2A2A0F":c.condition==="MP"?"#2A1A0F":"#2A0F0F",color:c.condition==="LP"?"#E8C349":c.condition==="MP"?"#F09030":T.red,fontWeight:700}}>{c.condition}</span>}
           {c.foil&&<span style={{fontSize:10,padding:"1px 4px",borderRadius:3,background:"#1A0F2A",color:T.purple,fontWeight:700}}>FOIL</span>}
@@ -2179,7 +2194,7 @@ function GameTools({toast}) {
           <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:2}}>{pl.name}{monarch===idx?" \u{1F451}":""}</div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
             <button onClick={()=>adjPlayer(idx,"life",-1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <div style={{fontSize:playerCount<=2?32:24,fontWeight:900,color:pl.life<=0?T.red:T.accent,fontFamily:F.heading,minWidth:36,textShadow:pl.life<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{pl.life}</div>
+            <div style={{fontSize:playerCount<=2?FS.statLg:FS.statSm,fontWeight:900,color:pl.life<=0?T.red:T.accent,fontFamily:F.heading,minWidth:36,textShadow:pl.life<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{pl.life}</div>
             <button onClick={()=>adjPlayer(idx,"life",1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
           {format==="commander"&&<div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
