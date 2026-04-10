@@ -361,16 +361,21 @@ const GLOW = "0 0 20px rgba(201,169,110,.25)";
 
 // Error retry queue for Supabase writes
 const retryQueue = [];
+const MAX_RETRY_QUEUE = 50;
 async function enqueueWrite(fn) {
   try { return await fn(); }
-  catch (e) { retryQueue.push(fn); console.warn("Write queued for retry:", e.message); return { error: e }; }
+  catch (e) {
+    if (retryQueue.length < MAX_RETRY_QUEUE) retryQueue.push(fn);
+    else console.warn("Retry queue full, dropping write");
+    return { error: e };
+  }
 }
-// Process retry queue periodically
 if (typeof window !== "undefined") {
   setInterval(async () => {
-    while (retryQueue.length > 0) {
+    let attempts = 0;
+    while (retryQueue.length > 0 && attempts < 10) {
       const fn = retryQueue[0];
-      try { await fn(); retryQueue.shift(); } catch { break; }
+      try { await fn(); retryQueue.shift(); attempts++; } catch { break; }
     }
   }, 30000);
 }
@@ -758,29 +763,35 @@ export default function App() {
         setDecks(fullDecks);
       }
 
-      // Merge local data to cloud on first login
+      // Merge local data to cloud on first login (safe: verify before deleting)
       if(hasLocalData&&sBinds){
+        let mergeSuccess=true;let mergedCards=0;let mergedDecks=0;
         const collBinder=sBinds.find(b=>b.binder_type==="collection");
         if(collBinder&&localBinders){
           for(const lb of localBinders){
             if(lb.cards?.length){
               for(const c of lb.cards){
-                try{await cardsApi.add(collBinder.id,{...c,id:c.scryfall_id||c.id},{condition:c.condition||"NM",foil:c.foil||false,language:c.language||"en",qty:c.qty||1})}catch{}
+                const{error}=await cardsApi.add(collBinder.id,{...c,id:c.scryfall_id||c.id},{condition:c.condition||"NM",foil:c.foil||false,language:c.language||"en",qty:c.qty||1});
+                if(error)mergeSuccess=false;else mergedCards++;
               }
             }
           }
         }
         if(localDecks){
           for(const ld of localDecks){
-            try{
-              const{data:nd}=await decksApi.create(ld.name,ld.format,ld.tags||[]);
-              if(nd&&ld.cards){for(const c of ld.cards){try{await deckCardsApi.add(nd.id,{...c,id:c.scryfall_id||c.id},c.board||"main")}catch{}}}
-            }catch{}
+            const{data:nd,error:dErr}=await decksApi.create(ld.name,ld.format,ld.tags||[]);
+            if(dErr){mergeSuccess=false;continue;}
+            mergedDecks++;
+            if(nd&&ld.cards){for(const c of ld.cards){await deckCardsApi.add(nd.id,{...c,id:c.scryfall_id||c.id},c.board||"main")}}
           }
         }
-        // Clear local data after merge
-        await store.set("av-binders",null);await store.set("av-decks",null);
-        toast("Local data synced to cloud!");
+        // Only clear local data if merge had no failures
+        if(mergeSuccess){
+          await store.set("av-binders",null);await store.set("av-decks",null);
+          toast(`Synced ${mergedCards} cards and ${mergedDecks} decks to cloud!`);
+        }else{
+          toast(`Partial sync: ${mergedCards} cards, ${mergedDecks} decks. Local backup kept.`,"info");
+        }
         // Reload from Supabase
         const{data:refreshedBinds}=await bindersApi.list();
         if(refreshedBinds){
@@ -1589,7 +1600,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           {cards.map(c=>{const idx=allCards.findIndex(x=>x.id===c.id&&x.board===c.board);return <div key={c.id+c.board} style={{position:"relative",cursor:"pointer"}} onClick={()=>idx>=0&&setSlideIdx(idx)}>
             <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",borderRadius:4,display:"block"}}/>
             {c.qty>1&&<div style={{position:"absolute",top:2,right:2,background:T.gold,color:"#000",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
-            <button onClick={e=>{e.stopPropagation();rmCard(c.id,c.board)}} style={{position:"absolute",bottom:2,right:2,width:20,height:20,borderRadius:10,border:"none",background:"rgba(0,0,0,.7)",color:T.red,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <button onClick={e=>{e.stopPropagation();rmCard(c.id,c.board)}} style={{position:"absolute",bottom:2,right:2,width:28,height:28,borderRadius:14,border:"none",background:"rgba(0,0,0,.7)",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           </div>})}
         </div>
       </div>;
@@ -1621,7 +1632,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
         {deck.cards.filter(c=>c.board==="sideboard").map(c=><div key={c.id+"sb"} style={{position:"relative"}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",borderRadius:4,display:"block",opacity:.7}}/>
           {c.qty>1&&<div style={{position:"absolute",top:2,right:2,background:"#666",color:"#fff",borderRadius:4,padding:"1px 5px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
-          <button onClick={()=>rmCard(c.id,c.board)} style={{position:"absolute",bottom:2,right:2,width:20,height:20,borderRadius:10,border:"none",background:"rgba(0,0,0,.7)",color:T.red,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+          <button onClick={()=>rmCard(c.id,c.board)} style={{position:"absolute",bottom:2,right:2,width:28,height:28,borderRadius:14,border:"none",background:"rgba(0,0,0,.7)",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
         </div>)}
       </div>
     </div>}
@@ -1766,8 +1777,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         <div style={{padding:"6px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:11,fontWeight:600,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
           <div style={{display:"flex",gap:2}}>
-            <button onClick={e=>{e.stopPropagation();adj(c.id,-1)}} style={{width:22,height:22,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <button onClick={e=>{e.stopPropagation();adj(c.id,1)}} style={{width:22,height:22,borderRadius:4,border:"none",background:"#0F1E15",color:T.green,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+            <button onClick={e=>{e.stopPropagation();adj(c.id,-1)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <button onClick={e=>{e.stopPropagation();adj(c.id,1)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#0F1E15",color:T.green,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
         </div>
       </div>)}
@@ -1858,9 +1869,9 @@ function TradeView({toast}) {
         <img src={getImg(c,"small")} alt={c.name} style={{width:24,height:34,borderRadius:3,objectFit:"cover",flexShrink:0}}/>
         <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:9,color:T.green,fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{fmt(c.prices?.usd)}</span></div>
         <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
-          <button onClick={()=>onAdj(c.uid,-1)} style={{width:18,height:18,borderRadius:3,border:"none",background:"#1E1215",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+          <button onClick={()=>onAdj(c.uid,-1)} style={{width:28,height:28,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           <span style={{fontSize:10,fontWeight:700,minWidth:14,textAlign:"center",fontFamily:F.body}}>{c.qty||1}</span>
-          <button onClick={()=>onAdj(c.uid,1)} style={{width:18,height:18,borderRadius:3,border:"none",background:"#0F1E15",color:T.green,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          <button onClick={()=>onAdj(c.uid,1)} style={{width:28,height:28,borderRadius:6,border:"none",background:"#0F1E15",color:T.green,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
         </div>
       </div>)}
       <button onClick={()=>{setSide(s);setQ("");setResults([])}} style={{width:"100%",padding:10,borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",marginTop:4,fontFamily:F.body}}>+ Add card</button>
