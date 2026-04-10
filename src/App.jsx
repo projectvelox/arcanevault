@@ -16,12 +16,16 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
-async function searchScryfall(query, colors = [], type = "", set = "") {
+async function searchScryfall(query, colors = [], type = "", set = "", extra = {}) {
   let parts = [];
   if (query) parts.push(query);
   if (colors.length) parts.push(`id>=${colors.join("").toLowerCase()}`);
   if (type) parts.push(`t:${type}`);
   if (set) parts.push(`set:${set}`);
+  if (extra.rarity) parts.push(`r:${extra.rarity}`);
+  if (extra.cmc) parts.push(`cmc${extra.cmc}`);
+  if (extra.oracle) parts.push(`o:"${extra.oracle}"`);
+  if (extra.legality) parts.push(`f:${extra.legality}`);
   if (!parts.length) return { data: [], total: 0 };
   try {
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(parts.join(" "))}&order=name&unique=${set ? "prints" : "cards"}`);
@@ -610,9 +614,11 @@ export default function App() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SEARCH (with Card of the Day)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-function SearchView({addColl,addDeck,decks,toast}) {
+function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [q,setQ]=useState("");const [colors,setColors]=useState([]);const [type,setType]=useState("");
   const [set,setSet]=useState("");const [sets,setSets]=useState([]);
+  const [rarity,setRarity]=useState("");const [cmcOp,setCmcOp]=useState("");
+  const [oText,setOText]=useState("");const [showAdv,setShowAdv]=useState(false);
   const [results,setResults]=useState([]);const [total,setTotal]=useState(0);const [loading,setLoading]=useState(false);
   const [slideIdx,setSlideIdx]=useState(-1);const [showAdd,setShowAdd]=useState(false);
   const [scanning,setScanning]=useState(false);const [scanStatus,setScanStatus]=useState("");const [scanPreview,setScanPreview]=useState(null);
@@ -625,16 +631,17 @@ function SearchView({addColl,addDeck,decks,toast}) {
   const dQAc=useDebounce(q,200);
   useEffect(()=>{if(dQAc.length>=2&&acFocused)fetchAutocomplete(dQAc).then(setAutocomplete);else setAutocomplete([])},[dQAc,acFocused]);
   const dQ=useDebounce(q,350),dC=useDebounce(colors,350),dT=useDebounce(type,350),dS=useDebounce(set,350);
+  const dR=useDebounce(rarity,350),dCmc=useDebounce(cmcOp,350),dOT=useDebounce(oText,350);
 
   useEffect(()=>{
-    let cancelled=false;const has=dQ||dC.length||dT||dS;
+    let cancelled=false;const has=dQ||dC.length||dT||dS||dR||dCmc||dOT;
     if(!has){setResults([]);setTotal(0);return;}
     setLoading(true);
-    searchScryfall(dQ,dC,dT,dS).then(res=>{if(!cancelled){setResults(res.data);setTotal(res.total);setLoading(false)}});
+    searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{if(!cancelled){setResults(res.data);setTotal(res.total);setLoading(false)}});
     return()=>{cancelled=true};
-  },[dQ,dC,dT,dS]);
+  },[dQ,dC,dT,dS,dR,dCmc,dOT]);
 
-  const hasQuery=q||colors.length||type||set;
+  const hasQuery=q||colors.length||type||set||rarity||cmcOp||oText;
 
   const handleScan=async(e)=>{
     const file=e.target.files?.[0];if(!file)return;
@@ -670,8 +677,14 @@ function SearchView({addColl,addDeck,decks,toast}) {
         <ColorPills colors={colors} setColors={setColors}/>
         <TypeSelect type={type} setType={setType}/>
         <select value={set} onChange={e=>setSet(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
-        {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("")}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
+        {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("");setRarity("");setCmcOp("");setOText("");setShowAdv(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
+        <button onClick={()=>setShowAdv(!showAdv)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${showAdv||(rarity||cmcOp||oText)?T.gold+"66":T.cardBorder}`,background:showAdv?T.goldGlow:"transparent",color:showAdv||rarity||cmcOp||oText?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>More</button>
       </div>
+      {showAdv&&<div style={{display:"flex",gap:6,marginTop:6,overflowX:"auto",alignItems:"center",paddingBottom:4}}>
+        <select value={rarity} onChange={e=>setRarity(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">Rarity</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="mythic">Mythic</option></select>
+        <select value={cmcOp} onChange={e=>setCmcOp(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">MV</option>{[0,1,2,3,4,5,6,7].map(n=><option key={n} value={`=${n}`}>{n}</option>)}<option value=">=8">8+</option></select>
+        <input value={oText} onChange={e=>setOText(e.target.value)} placeholder="Oracle text..." style={{flex:1,padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,height:30,minWidth:80,fontFamily:F.body,boxSizing:"border-box"}}/>
+      </div>}
       <div style={{fontSize:12,color:T.textDim,marginTop:4,fontFamily:F.body}}>
         {loading?loadPhrase():hasQuery?`${total.toLocaleString()} cards found (showing ${results.length})`:""}
       </div>
