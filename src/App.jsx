@@ -1413,6 +1413,37 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
           {realDupes.map(([name,bs])=><div key={name} style={{fontSize:11,color:T.textMuted,fontFamily:F.body,marginBottom:2}}>{name} \u2014 <span style={{color:T.textDim}}>{[...new Set(bs)].join(", ")}</span></div>)}
         </div>;
       })()}
+      {/* Collection Milestones */}
+      {vs.totalCards>0&&<div style={{background:T.card,borderRadius:4,border:`1px solid ${T.cardBorder}`,padding:12,marginTop:12,boxShadow:S.cardFrame}}>
+        <div style={{fontSize:10,color:T.gold,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8,fontFamily:F.heading}}>Milestones</div>
+        <div style={{display:"flex",flexDirection:"column",gap:4}}>
+          {[
+            [vs.totalCards>=10,"First Steps","Collect 10 cards",10],
+            [vs.totalCards>=100,"Apprentice Mage","Collect 100 cards",100],
+            [vs.totalCards>=500,"Seasoned Collector","Collect 500 cards",500],
+            [vs.totalCards>=1000,"Archmage","Collect 1000 cards",1000],
+            [vs.totalCards>=5000,"Planeswalker","Collect 5000 cards",5000],
+            [vs.sets>=5,"World Traveler","Own cards from 5 sets",5],
+            [vs.sets>=20,"Multiverse Explorer","Own cards from 20 sets",20],
+            [vs.foilCount>=10,"Foil Collector","Own 10 foil cards",10],
+            [vs.foilCount>=50,"Foil Connoisseur","Own 50 foil cards",50],
+            [vs.totalValue>=100,"Hundred Dollar Vault","Vault worth $100+",100],
+            [vs.totalValue>=1000,"Thousand Dollar Vault","Vault worth $1000+",1000],
+            [decks.length>=5,"Deck Brewer","Build 5 decks",5],
+            [decks.length>=10,"Master Builder","Build 10 decks",10],
+          ].filter(([,,, threshold])=>threshold<=Math.max(vs.totalCards,vs.sets,vs.foilCount,vs.totalValue,decks.length)*2).map(([achieved,name,desc])=>
+            <div key={name} style={{display:"flex",alignItems:"center",gap:8,opacity:achieved?1:.4}}>
+              <div style={{width:20,height:20,borderRadius:10,background:achieved?`linear-gradient(135deg,${T.gold},${T.goldDark})`:T.cardInner,border:`1px solid ${achieved?T.gold:T.cardBorder}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>
+                {achieved?"\u2713":""}
+              </div>
+              <div>
+                <div style={{fontSize:11,fontWeight:700,color:achieved?T.accent:T.textDim,fontFamily:F.body}}>{name}</div>
+                <div style={{fontSize:9,color:T.textDim,fontFamily:F.body}}>{desc}</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>}
     </div>}
 
     <div style={{display:"flex",gap:0,background:T.card,borderRadius:4,padding:3,marginBottom:16,border:`1px solid ${T.cardBorder}`,boxShadow:S.cardFrame}}>
@@ -1439,7 +1470,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
   const create=async()=>{if(!name.trim())return;
     let deckId=Date.now().toString();
     if(supabase){const{data:sd}=await decksApi.create(name,format,tag?[tag]:[]);if(sd)deckId=sd.id;}
-    const d={id:deckId,name,format,cards:[],notes:"",tags:tag?[tag]:[],ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);setTag("");toast(`Created "${name}"`);};
+    const d={id:deckId,name,format,cards:[],notes:"",tags:tag?[tag]:[],wins:0,losses:0,ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);setTag("");toast(`Created "${name}"`);};
   const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk){toast(`Deleted "${dk.name}"`,"error");if(supabase)enqueueWrite(()=>decksApi.delete(deleteTarget))}};
   const cloneDeck=async(d)=>{
     if(supabase){const{data:nd}=await decksApi.clone(d.id);if(nd){setDecks(p=>[...p,{...nd,cards:[...d.cards],tags:nd.tags||[],notes:nd.notes||""}]);toast(`Cloned "${d.name}"`);return;}}
@@ -1645,6 +1676,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
             <span>{stats.mainN} main{stats.sideN>0?` / ${stats.sideN} side`:""}</span>
             <span style={{color:T.green,fontWeight:700}}>{fmt(stats.val.toFixed(2))}</span>
             <span>Avg MV: {stats.avgMv.toFixed(1)}</span>
+            {(deck.wins||deck.losses)?<span style={{color:deck.wins>deck.losses?T.green:deck.wins<deck.losses?T.red:T.textMuted}}>{deck.wins||0}W-{deck.losses||0}L</span>:null}
             {colorName!=="Colorless"&&<span style={{fontStyle:"italic",color:T.textMuted}}>{colorName}</span>}
           </div>
         </div>
@@ -1722,7 +1754,15 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 
     {/* Deck notes */}
     <div style={{marginBottom:10}}>
-      <button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,padding:0,textDecoration:"underline"}}>{showNotes?"Hide notes":"Notes"}{deck.notes?" \u2022":"..."}</button>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,padding:0,textDecoration:"underline"}}>{showNotes?"Hide notes":"Notes"}{deck.notes?" \u2022":"..."}</button>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Record:</span>
+          <button onClick={()=>setDecks(p=>p.map(d=>d.id===deckId?{...d,wins:(d.wins||0)+1}:d))} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.green}`,background:"transparent",color:T.green,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+W</button>
+          <span style={{fontSize:12,fontWeight:700,color:T.textMuted,fontFamily:F.heading}}>{deck.wins||0}-{deck.losses||0}</span>
+          <button onClick={()=>setDecks(p=>p.map(d=>d.id===deckId?{...d,losses:(d.losses||0)+1}:d))} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+L</button>
+        </div>
+      </div>
       {showNotes&&<textarea value={deck.notes||""} onChange={e=>updateNotes(e.target.value)} placeholder="Deck strategy, matchup notes, card choices..." style={{width:"100%",marginTop:6,height:60,padding:10,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,resize:"vertical",boxSizing:"border-box",fontFamily:F.body,lineHeight:1.5,boxShadow:S.insetInput}}/>}
     </div>
 
