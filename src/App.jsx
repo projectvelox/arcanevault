@@ -6,6 +6,7 @@ import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, car
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const safeUrl = u => u && (u.startsWith("https://") || u.startsWith("http://")) ? u : null;
+function resizeAvatar(file,maxSize=128){return new Promise(resolve=>{const reader=new FileReader();reader.onload=e=>{const img=new Image();img.onload=()=>{const c=document.createElement("canvas");const s=Math.min(maxSize/Math.max(img.width,img.height),1);c.width=img.width*s;c.height=img.height*s;c.getContext("2d").drawImage(img,0,0,c.width,c.height);resolve(c.toDataURL("image/jpeg",0.7))};img.src=e.target.result};reader.readAsDataURL(file)})}
 const APP_VERSION = "2.4.0";
 const CHANGELOG = [
   { version: "2.4.0", date: "2026-04-13", title: "The Great Stabilization", changes: [
@@ -847,7 +848,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const getFlipImg=()=>{if(!flipped||!card.card_faces?.[1])return getImg(card);return card.card_faces[1].image_uris?.normal||card.card_faces[1].image_uris?.large||getImg(card)};
   const cardImgSrc=getFlipImg();
 
-  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",overscrollBehavior:"contain"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",overscrollBehavior:"contain"}}>
     <ArtBg src={getImg(card)} opacity={.25} blur={40} gradient={false}/>
     <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
@@ -858,8 +859,8 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         <button onClick={()=>index<cards.length-1&&onIndexChange(index+1)} disabled={index>=cards.length-1} style={{background:"none",border:`1px solid ${T.cardBorder}`,borderRadius:8,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{I.chevR(index<cards.length-1?T.gold:"#333")}</button>
       </div>
     </div>
-    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"auto",padding:"0 16px"}}>
-      <div style={{position:"relative",maxWidth:"85%"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",overflow:"auto",padding:"0 16px",WebkitOverflowScrolling:"touch",overscrollBehavior:"contain"}}>
+      <div style={{position:"relative",maxWidth:"85%",touchAction:"pan-y"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
         {!imgLoaded&&!imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:32,height:32,border:`3px solid ${T.gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/></div>}
         <img src={cardImgSrc} alt={card.name} onLoad={()=>setImgLoaded(true)} onError={()=>setImgError(true)} style={{width:"100%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)${flipped?" rotateY(180deg)":""}`,transition:dragging?"none":"transform .4s",pointerEvents:"none",objectFit:"contain",opacity:imgLoaded?1:0}}/>
         {imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}><span style={{fontSize:32}}>🃏</span><span style={{fontSize:13,color:T.textMuted,fontFamily:F.body}}>Image failed to load</span></div>}
@@ -1307,7 +1308,7 @@ export default function App() {
                 {!userAvatar&&(user?.user_metadata?.display_name||user?.email||"?")[0].toUpperCase()}
               </div>
               <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:10,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>{"\uD83D\uDCF7"}</div>
-              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{const dataUrl=ev.target.result;setUserAvatar(dataUrl);if(supabase)profileApi.update({avatar_url:dataUrl}).then(()=>toast("Avatar updated!"))};reader.readAsDataURL(file)}}/>
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const dataUrl=await resizeAvatar(file);setUserAvatar(dataUrl);if(supabase)profileApi.update({avatar_url:dataUrl}).then(()=>toast("Avatar updated!"))}}/>
             </label>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.user_metadata?.display_name||user?.email?.split("@")[0]||"Planeswalker"}</div>
@@ -2791,11 +2792,11 @@ function TradeView({toast,decks,setDecks,user}) {
     </div>}
 
     {/* Rivals Tracker */}
-    <RivalsTracker decks={decks} setDecks={setDecks} toast={toast} user={user}/>
+    <RivalsTracker decks={decks} setDecks={setDecks} toast={toast} user={user} setUserAvatar={setUserAvatar}/>
   </div>;
 }
 
-function RivalsTracker({decks,setDecks,toast,user}) {
+function RivalsTracker({decks,setDecks,toast,user,setUserAvatar}) {
   const [view,setView]=useState("rivals"); // "rivals" | "history" | "profile"
   const [showLogGame,setShowLogGame]=useState(false);
   const [logDeck,setLogDeck]=useState("");const [logOpp,setLogOpp]=useState("");const [logResult,setLogResult]=useState("W");
@@ -2890,7 +2891,9 @@ function RivalsTracker({decks,setDecks,toast,user}) {
   };
   const saveProfile=async()=>{
     if(!supabase||!user)return;
-    await profileApi.update({bio:profile.bio,favorite_color:profile.favoriteColor,avatar_url:profile.avatar});
+    const{error}=await profileApi.update({bio:profile.bio,favorite_color:profile.favoriteColor,avatar_url:profile.avatar});
+    if(error){toast("Failed to save profile — "+error.message,"error");return}
+    if(profile.avatar&&setUserAvatar)setUserAvatar(profile.avatar);
     toast("Profile saved!");setEditingProfile(false);
   };
   const displayName=user?.user_metadata?.display_name||user?.email?.split("@")[0]||"Planeswalker";
@@ -3066,7 +3069,7 @@ function RivalsTracker({decks,setDecks,toast,user}) {
           </div>
           {editingProfile&&<label style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:12,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:12}}>
             {"\uD83D\uDCF7"}
-            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result}));reader.readAsDataURL(file)}}/>
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const dataUrl=await resizeAvatar(file);setProfile(p=>({...p,avatar:dataUrl}))}}/>
           </label>}
         </div>
         <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{displayName}</div>
@@ -3099,7 +3102,7 @@ function RivalsTracker({decks,setDecks,toast,user}) {
             <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Profile Picture</div>
             <label style={{display:"block",padding:"10px 14px",borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:T.cardInner,cursor:"pointer",textAlign:"center",marginBottom:8}}>
               <span style={{fontSize:12,color:T.gold,fontFamily:F.body,fontWeight:600}}>{profile.avatar?"Change photo":"Upload photo"}</span>
-              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result}));reader.readAsDataURL(file)}}/>
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const file=e.target.files?.[0];if(!file)return;const dataUrl=await resizeAvatar(file);setProfile(p=>({...p,avatar:dataUrl}))}}/>
             </label>
             <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Bio</div>
             <textarea value={profile.bio} onChange={e=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Tell your rivals about yourself..." maxLength={200} style={{width:"100%",height:60,padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxSizing:"border-box",resize:"none"}}/>
