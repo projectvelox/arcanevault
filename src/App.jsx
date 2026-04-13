@@ -6,6 +6,65 @@ import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, car
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 const safeUrl = u => u && (u.startsWith("https://") || u.startsWith("http://")) ? u : null;
+const APP_VERSION = "2.4.0";
+const CHANGELOG = [
+  { version: "2.4.0", date: "2026-04-13", title: "The Great Stabilization", changes: [
+    "Fixed 80+ bugs across all features from comprehensive QA audit",
+    "Card viewer: fixed pitch-black screen, added loading spinner and error state",
+    "Card viewer: fixed background scroll bleed-through when scrolling card details",
+    "Transform/MDFC cards: flip button now works for all dual-faced cards",
+    "Oracle text: shows all card faces for split, adventure, and MDFC cards",
+    "Search: color filter now uses subset matching (like Manabox/Moxfield)",
+    "Search: Scryfall errors now show helpful messages instead of silent empty results",
+    "Deck editor: fixed moveCard duplicating cards, format/match log now syncs to cloud",
+    "Deck validation: copy limits check main+sideboard combined, Seven Dwarves capped at 7",
+    "Added Limited (40-card), Brawl, and Oathbreaker format support",
+    "Hybrid mana ({W/U}, {R/G}, etc.) now counted in color distribution",
+    "Binder: quantity changes, bulk delete, and bulk move now sync to Supabase",
+    "Trade: prices respect currency setting, cards without prices show warning",
+    "Life counter: poison counters visible in all formats, commander damage no longer double-counts",
+    "Battle card type recognized in deck stats",
+    "Grid view: paginated (60 cards/page) to prevent browser freeze on large collections",
+    "Import: button disabled during import, uses proper Scryfall rate limiting",
+    "Security: share IDs use full UUID, sign-out clears all state, URL validation on links",
+    "Mobile: touch targets meet 28px minimum, safe area insets, smooth scroll on all horizontal lists",
+    "Accessibility: aria-labels on icon buttons, color pill tooltips with full names",
+    "Default deck format changed to Standard (friendlier for new users)",
+    "Camera button now labeled 'Scan', jargon reduced in sort/filter labels",
+    "Local data backup now works for logged-in users (prevents data loss on network drop)",
+    "Deck notes debounced to reduce unnecessary cloud writes",
+  ]},
+  { version: "2.3.0", date: "2026-04-12", title: "Commander Stats & Polish", changes: [
+    "Commander Stats Dashboard: win rate, total games, best deck, opponent analysis",
+    "4-player Commander life tracker with energy, poison, monarch tracking",
+    "Responsive typography with clamp() fluid scaling",
+    "Shared deck viewer for deep-linked decklists",
+    "Deck win/loss tracking and match history",
+    "Collection milestones and achievements",
+    "Tag filtering, infinite scroll, storm count, turn tracker",
+  ]},
+  { version: "2.2.0", date: "2026-04-10", title: "Cloud Sync & Accounts", changes: [
+    "Supabase integration: sign up, sign in, cloud sync",
+    "Deck sharing via unique links",
+    "Price watchlist with sparkline charts",
+    "Offline mode with IndexedDB persistence and retry queue",
+    "OCR card scanner with batch mode",
+  ]},
+  { version: "2.1.0", date: "2026-04-08", title: "Deck Builder", changes: [
+    "Full deck editor with visual and list views",
+    "London mulligan playtest simulator",
+    "Deck import/export (text and Arena formats)",
+    "Mana curve, color distribution, land ratio stats",
+    "Card suggestions based on deck composition",
+  ]},
+  { version: "2.0.0", date: "2026-04-05", title: "The Vault Opens", changes: [
+    "Complete rewrite with new dark theme and gold accents",
+    "Card search with color, type, set, rarity filters",
+    "Collection binder with grid/list views and value tracking",
+    "Two-sided trade evaluator with balance indicator",
+    "Life counter with game tools",
+  ]},
+];
 const getImg = (card, version = "normal") => {
   const uris = card?.image_uris || card?.card_faces?.[0]?.image_uris;
   if (!uris) return PLACEHOLDER_IMG;
@@ -897,7 +956,7 @@ export default function App() {
   const [ready,setReady]=useState(false);
   const {toasts,show:toast}=useToast();
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
-  const [showSettings,setShowSettings]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [isOffline,setIsOffline]=useState(!navigator.onLine);
   const [user,setUser]=useState(null);
@@ -1130,6 +1189,38 @@ export default function App() {
             <option value="dark">Dark</option><option value="oled">OLED Black</option>
           </select>
         </label>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:10,borderTop:`1px solid ${T.cardBorder}`}}>
+        <span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Arcane Vault v{APP_VERSION}</span>
+        <button onClick={()=>setShowChangelog(true)} style={{fontSize:11,color:T.gold,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>What's New</button>
+      </div>
+    </div>}
+
+    {/* Changelog overlay */}
+    {showChangelog&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column",alignItems:"center",padding:"0",overscrollBehavior:"contain"}} onClick={()=>setShowChangelog(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,width:"100%",maxWidth:480,flex:1,overflow:"auto",padding:"0 0 env(safe-area-inset-bottom,16px)"}}>
+        <div style={{position:"sticky",top:0,background:T.surface,padding:"16px 18px 12px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:1}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>What's New</div>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Version History & Changelog</div>
+          </div>
+          <button onClick={()=>setShowChangelog(false)} style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.close(T.textMuted)}</button>
+        </div>
+        <div style={{padding:"8px 18px 24px"}}>
+          {CHANGELOG.map(release=><div key={release.version} style={{marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:6}}>
+              <span style={{fontSize:15,fontWeight:800,color:T.gold,fontFamily:F.heading}}>v{release.version}</span>
+              <span style={{fontSize:12,fontWeight:600,color:T.accent,fontFamily:F.heading}}>{release.title}</span>
+              <span style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginLeft:"auto"}}>{release.date}</span>
+            </div>
+            <div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:"10px 14px",boxShadow:S.cardFrame}}>
+              {release.changes.map((c,i)=><div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:i<release.changes.length-1?`1px solid ${T.cardBorder}`:"none"}}>
+                <span style={{color:T.gold,flexShrink:0,fontSize:11,marginTop:1}}>+</span>
+                <span style={{fontSize:12,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{c}</span>
+              </div>)}
+            </div>
+          </div>)}
+        </div>
       </div>
     </div>}
 
