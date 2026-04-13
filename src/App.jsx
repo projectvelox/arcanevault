@@ -1899,7 +1899,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [mullPhase,setMullPhase]=useState(null);
   const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
   const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);const [importing,setImporting]=useState(false);
-  const [buildColors,setBuildColors]=useState([]);const [building,setBuilding]=useState(false);
+  const [buildColors,setBuildColors]=useState([]);const [building,setBuilding]=useState(false);const [buildStep,setBuildStep]=useState("");
   const notesTimer=useRef(null);
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
@@ -1960,49 +1960,69 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 
   const autoBuild=async()=>{
     if(building)return;setBuilding(true);
-    const colors=buildColors.length?buildColors:["R","G"]; // default Gruul if none picked
+    const colors=buildColors.length?buildColors:["R","G"];
     const colorQ=`id<=${colors.join("").toLowerCase()}`;
-    const isCommander=deck.format==="commander"||deck.format==="brawl";
-    const targetMain=isCommander?99:36; // non-lands
-    const targetLands=isCommander?37:24;
-    const copies=isCommander?1:4;
+    const isCmdr=deck.format==="commander"||deck.format==="brawl";
+    const fmt2=deck.format==="limited"?"standard":deck.format;
+    const targetTotal=isCmdr?99:60;
+    const targetLands=isCmdr?37:24;
+    const targetNonLand=targetTotal-targetLands;
+    const creatureSlots=Math.round(targetNonLand*0.6);
+    const spellSlots=targetNonLand-creatureSlots;
+    // In singleton formats each card is 1-of; otherwise use unique cards at varying qty
+    const uniqueCreatures=isCmdr?creatureSlots:Math.ceil(creatureSlots/3);
+    const uniqueSpells=isCmdr?spellSlots:Math.ceil(spellSlots/2);
     try{
-      // Fetch creatures
+      // Fetch creatures (top by EDHREC rank)
+      setBuildStep("Finding creatures...");
       await scryfallThrottle();
-      const cr=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:creature f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
+      const cr=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:creature f:${fmt2}`)}&order=edhrec&unique=cards`);
       const creatures=cr.ok?(await cr.json()).data||[]:[];
       // Fetch non-creature spells
+      setBuildStep("Finding spells...");
       await scryfallThrottle();
-      const sp=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} (t:instant or t:sorcery or t:enchantment or t:artifact or t:planeswalker) f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
+      const sp=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} (t:instant or t:sorcery or t:enchantment or t:artifact) f:${fmt2}`)}&order=edhrec&unique=cards`);
       const spells=sp.ok?(await sp.json()).data||[]:[];
-      // Fetch lands
-      await scryfallThrottle();
-      const la=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:land ${colors.length>1?"-t:basic":"t:basic"} f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
-      const lands=la.ok?(await la.json()).data||[]:[];
+      // Fetch non-basic lands (for multi-color mana fixing)
+      setBuildStep("Finding lands...");
+      let specialLands=[];
+      if(colors.length>1){await scryfallThrottle();
+        const la=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:land -t:basic f:${fmt2}`)}&order=edhrec&unique=cards`);
+        specialLands=la.ok?(await la.json()).data||[]:[]}
 
-      const pick=(pool,count)=>{const picked=[];let i=0;while(picked.length<count&&i<pool.length){const c=pool[i];if(!isCommander||!picked.find(p=>p.id===c.id)){picked.push(c)}i++}return picked};
+      // Pick unique cards
+      const pickedCreatures=creatures.slice(0,uniqueCreatures);
+      const pickedSpells=spells.slice(0,uniqueSpells);
+      const specialLandCount=isCmdr?Math.min(specialLands.length,12):Math.min(specialLands.length,4);
+      const pickedSpecialLands=specialLands.slice(0,specialLandCount);
 
-      const creatureCount=Math.round(targetMain*0.6);
-      const spellCount=targetMain-creatureCount;
-      const pickedCreatures=pick(creatures,creatureCount);
-      const pickedSpells=pick(spells,spellCount);
-      const pickedLands=pick(lands,Math.min(targetLands-colors.length,lands.length));
-
-      // Build cards array
+      // Assign quantities
       const deckCards=[];
-      [...pickedCreatures,...pickedSpells].forEach(c=>{deckCards.push({...c,qty:copies>1?Math.min(copies,isCommander?1:2):1,board:"main"})});
-      pickedLands.forEach(c=>{deckCards.push({...c,qty:isCommander?1:2,board:"main"})});
+      if(isCmdr){
+        // Singleton: 1 copy each
+        pickedCreatures.forEach(c=>deckCards.push({...c,qty:1,board:"main"}));
+        pickedSpells.forEach(c=>deckCards.push({...c,qty:1,board:"main"}));
+        pickedSpecialLands.forEach(c=>deckCards.push({...c,qty:1,board:"main"}));
+      }else{
+        // Constructed: spread copies to hit target
+        let slotsLeft=creatureSlots;
+        pickedCreatures.forEach(c=>{const q=Math.min(4,Math.max(1,Math.ceil(slotsLeft/Math.max(1,pickedCreatures.length))));const qty=Math.min(q,slotsLeft);if(qty>0){deckCards.push({...c,qty,board:"main"});slotsLeft-=qty}});
+        slotsLeft=spellSlots;
+        pickedSpells.forEach(c=>{const q=Math.min(4,Math.max(1,Math.ceil(slotsLeft/Math.max(1,pickedSpells.length))));const qty=Math.min(q,slotsLeft);if(qty>0){deckCards.push({...c,qty,board:"main"});slotsLeft-=qty}});
+        pickedSpecialLands.forEach(c=>deckCards.push({...c,qty:isCmdr?1:2,board:"main"}));
+      }
 
-      // Fill remaining lands with basics
-      const currentCount=deckCards.reduce((a,c)=>a+c.qty,0);
-      const targetTotal=isCommander?99:60;
-      const remaining=Math.max(0,targetTotal-currentCount);
-      if(remaining>0){
+      // Fill remaining with basic lands
+      setBuildStep("Adding basic lands...");
+      const nonLandCount=deckCards.filter(c=>!(c.type_line||"").toLowerCase().includes("land")).reduce((a,c)=>a+c.qty,0);
+      const currentLandCount=deckCards.filter(c=>(c.type_line||"").toLowerCase().includes("land")).reduce((a,c)=>a+c.qty,0);
+      const basicsNeeded=Math.max(0,targetTotal-nonLandCount-currentLandCount);
+      if(basicsNeeded>0){
         const basicNames={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"};
         const basicsToUse=colors.map(c=>basicNames[c]).filter(Boolean);
         if(basicsToUse.length){
-          const perBasic=Math.floor(remaining/basicsToUse.length);
-          const extra=remaining%basicsToUse.length;
+          const perBasic=Math.floor(basicsNeeded/basicsToUse.length);
+          const extra=basicsNeeded%basicsToUse.length;
           for(let i=0;i<basicsToUse.length;i++){
             await scryfallThrottle();
             const br=await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(basicsToUse[i])}`);
@@ -2011,9 +2031,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
         }
       }
 
-      // Set all cards on the deck
+      setBuildStep("Assembling deck...");
       setDecks(p=>p.map(d=>d.id!==deckId?d:{...d,cards:deckCards}));
-      toast(`Auto-built ${deckCards.reduce((a,c)=>a+c.qty,0)} cards!`);
+      const total=deckCards.reduce((a,c)=>a+c.qty,0);
+      toast(`Auto-built ${total}-card ${colors.map(c=>COLOR_NAMES[c]).join("/")} deck!`);
       if(isOnline.current)deckCards.forEach(c=>enqueueWrite(()=>deckCardsApi.add(deckId,c,c.board)));
     }catch(e){toast("Failed to auto-build \u2014 check your connection","error")}
     setBuilding(false);
@@ -2245,9 +2266,13 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <ColorPills colors={buildColors} setColors={setBuildColors} size={38}/>
         </div>
         <div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginBottom:12}}>{buildColors.length===0?"Pick 1-3 colors (or leave empty for Red/Green)":buildColors.map(c=>COLOR_NAMES[c]).join(" + ")}</div>
-        <button onClick={autoBuild} disabled={building} style={{width:"100%",padding:14,borderRadius:8,border:"none",background:building?"#333":`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:building?"#666":"#000",fontSize:14,fontWeight:700,cursor:building?"default":"pointer",fontFamily:F.body,boxShadow:building?"none":S.goldGlow}}>
-          {building?"Building your deck...":"Build My Deck"}
+        <button onClick={autoBuild} disabled={building} style={{width:"100%",padding:14,borderRadius:8,border:"none",background:building?"#333":`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:building?"#999":"#000",fontSize:14,fontWeight:700,cursor:building?"default":"pointer",fontFamily:F.body,boxShadow:building?"none":S.goldGlow}}>
+          {building?"Building...":"Build My Deck"}
         </button>
+        {building&&<div style={{marginTop:12,display:"flex",alignItems:"center",gap:10,justifyContent:"center"}}>
+          <div style={{width:16,height:16,border:`2px solid ${T.gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+          <span style={{fontSize:12,color:T.gold,fontFamily:F.body,fontWeight:600}}>{buildStep}</span>
+        </div>}
       </div>
       <div style={{textAlign:"center",fontSize:12,color:T.textDim,fontFamily:F.body}}>or search above to add cards manually</div>
     </div>}
