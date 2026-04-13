@@ -1369,7 +1369,7 @@ export default function App() {
       <div key={tab} style={{animation:"fadeSlideIn .25s ease-out"}}>
       {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast} allCollCards={allCollCards}/>}
       {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards} isOnline={isOnline} user={user}/>}
-      {tab==="trade"&&<TradeView toast={toast}/>}
+      {tab==="trade"&&<TradeView toast={toast} decks={decks} setDecks={setDecks}/>}
       </div>
     </div>
 
@@ -2624,7 +2624,7 @@ function GameTools({toast}) {
   </div>;
 }
 
-function TradeView({toast}) {
+function TradeView({toast,decks,setDecks}) {
   const [give,setGive]=useState([]);const [recv,setRecv]=useState([]);
   const [side,setSide]=useState(null);const [q,setQ]=useState("");const [results,setResults]=useState([]);
   const [history,setHistory]=useState([]);const [showHistory,setShowHistory]=useState(false);
@@ -2731,5 +2731,114 @@ function TradeView({toast}) {
         </div>)}
       </div>}
     </div>}
+
+    {/* Rivals Tracker */}
+    <RivalsTracker decks={decks} setDecks={setDecks} toast={toast}/>
+  </div>;
+}
+
+function RivalsTracker({decks,setDecks,toast}) {
+  const [showRivals,setShowRivals]=useState(true);
+  const [showLogGame,setShowLogGame]=useState(false);
+  const [logDeck,setLogDeck]=useState("");const [logOpp,setLogOpp]=useState("");const [logResult,setLogResult]=useState("W");
+
+  const rivals=useMemo(()=>{
+    const map={};
+    (decks||[]).forEach(d=>{(d.matchLog||[]).forEach(m=>{
+      const opp=(m.vs||"").trim();if(!opp)return;
+      if(!map[opp])map[opp]={name:opp,wins:0,losses:0,games:0,lastDate:null,decks:{}};
+      const r=map[opp];
+      if(m.result==="W")r.wins++;else r.losses++;r.games++;
+      if(!r.lastDate||m.date>r.lastDate)r.lastDate=m.date;
+      if(!r.decks[d.name])r.decks[d.name]={w:0,l:0};
+      if(m.result==="W")r.decks[d.name].w++;else r.decks[d.name].l++;
+    })});
+    return Object.values(map).sort((a,b)=>b.games-a.games);
+  },[decks]);
+
+  const logGame=()=>{
+    if(!logDeck||!logOpp.trim())return;
+    const opp=logOpp.trim();const result=logResult;
+    setDecks(p=>p.map(d=>{
+      if(d.id!==logDeck)return d;
+      const up=result==="W"
+        ?{wins:(d.wins||0)+1,matchLog:[...(d.matchLog||[]),{result:"W",vs:opp,date:new Date().toISOString().split("T")[0]}]}
+        :{losses:(d.losses||0)+1,matchLog:[...(d.matchLog||[]),{result:"L",vs:opp,date:new Date().toISOString().split("T")[0]}]};
+      return{...d,...up};
+    }));
+    toast(`${result==="W"?"Win":"Loss"} vs ${opp} logged!`);
+    setLogOpp("");setShowLogGame(false);
+  };
+
+  const totalGames=rivals.reduce((a,r)=>a+r.games,0);
+  const totalWins=rivals.reduce((a,r)=>a+r.wins,0);
+
+  return <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${T.cardBorder}`}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <span style={{fontSize:18}}>{"\u2694\uFE0F"}</span>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Rivals</div>
+          {totalGames>0&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{totalGames} games \u2022 {totalWins}W-{totalGames-totalWins}L ({totalGames?Math.round(totalWins/totalGames*100):0}%)</div>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>setShowLogGame(!showLogGame)} style={{padding:"6px 12px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:showLogGame?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+ Log Game</button>
+        {rivals.length>0&&<button onClick={()=>setShowRivals(!showRivals)} style={{padding:"6px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>{showRivals?"Hide":"Show"}</button>}
+      </div>
+    </div>
+
+    {showLogGame&&<div style={{background:T.card,borderRadius:8,border:`1px solid ${T.gold}33`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
+      <div style={{fontSize:13,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:10}}>Log a Game</div>
+      <select value={logDeck} onChange={e=>setLogDeck(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,marginBottom:8,boxSizing:"border-box"}}>
+        <option value="">Select your deck...</option>
+        {(decks||[]).map(d=><option key={d.id} value={d.id}>{d.name} ({d.format})</option>)}
+      </select>
+      <div style={{display:"flex",gap:6,marginBottom:10}}>
+        <input value={logOpp} onChange={e=>setLogOpp(e.target.value)} placeholder="Opponent name..." onKeyDown={e=>e.key==="Enter"&&logGame()} style={{flex:1,padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxShadow:S.insetInput}}/>
+        <button onClick={()=>setLogResult(logResult==="W"?"L":"W")} style={{padding:"8px 14px",borderRadius:4,border:`1.5px solid ${logResult==="W"?T.green:T.red}`,background:"transparent",color:logResult==="W"?T.green:T.red,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:F.heading,minWidth:50}}>{logResult==="W"?"WIN":"LOSS"}</button>
+      </div>
+      <button onClick={logGame} disabled={!logDeck||!logOpp.trim()} style={{width:"100%",padding:10,borderRadius:4,border:"none",background:logDeck&&logOpp.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:logDeck&&logOpp.trim()?"#000":"#666",fontSize:12,fontWeight:700,cursor:logDeck&&logOpp.trim()?"pointer":"default",fontFamily:F.body}}>Log Result</button>
+    </div>}
+
+    {rivals.length===0&&!showLogGame&&<div style={{textAlign:"center",padding:"16px 0",color:T.textDim,fontSize:12,fontFamily:F.body}}>
+      No rivals yet \u2014 log your first game to start tracking!
+    </div>}
+
+    {showRivals&&rivals.map(r=>{
+      const winPct=r.games?Math.round(r.wins/r.games*100):0;
+      const allMatches=[];(decks||[]).forEach(d=>(d.matchLog||[]).forEach(m=>{if((m.vs||"").trim()===r.name)allMatches.push(m)}));
+      allMatches.sort((a,b)=>(b.date||"").localeCompare(a.date||""));
+      let streak=0;for(const m of allMatches){if(streak===0)streak=m.result==="W"?1:-1;else if((streak>0&&m.result==="W")||(streak<0&&m.result==="L"))streak+=streak>0?1:-1;else break}
+      return <div key={r.name} style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:12,marginBottom:8,boxShadow:S.cardFrame}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:34,height:34,borderRadius:17,background:`linear-gradient(135deg,${winPct>=50?T.green:T.red}33,${T.cardInner})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:winPct>=50?T.green:T.red,fontFamily:F.heading,border:`1.5px solid ${winPct>=50?T.green:T.red}44`}}>{winPct}%</div>
+            <div>
+              <div style={{fontSize:14,fontWeight:700,color:T.text,fontFamily:F.heading}}>{r.name}</div>
+              <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{r.games} game{r.games!==1?"s":""} \u2022 last {r.lastDate}</div>
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:18,fontWeight:800,fontFamily:F.heading}}>
+              <span style={{color:T.green}}>{r.wins}</span>
+              <span style={{color:T.textDim}}>{" - "}</span>
+              <span style={{color:T.red}}>{r.losses}</span>
+            </div>
+            {streak!==0&&<div style={{fontSize:10,color:streak>0?T.green:T.red,fontWeight:600,fontFamily:F.body}}>{Math.abs(streak)} {streak>0?"win":"loss"} streak</div>}
+          </div>
+        </div>
+        <div style={{height:6,borderRadius:3,background:T.cardInner,overflow:"hidden",marginBottom:6}}>
+          <div style={{width:`${winPct}%`,height:"100%",borderRadius:3,background:winPct>=50?`linear-gradient(90deg,${T.green},${T.green}cc)`:`linear-gradient(90deg,${T.red},${T.red}cc)`,transition:"width .3s"}}/>
+        </div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {Object.entries(r.decks).map(([dName,rec])=>
+            <span key={dName} style={{fontSize:10,padding:"2px 6px",borderRadius:3,background:T.cardInner,color:T.textMuted,fontFamily:F.body}}>
+              {dName}: <span style={{color:T.green,fontWeight:700}}>{rec.w}W</span>-<span style={{color:T.red,fontWeight:700}}>{rec.l}L</span>
+            </span>
+          )}
+        </div>
+      </div>;
+    })}
   </div>;
 }
