@@ -1027,8 +1027,8 @@ export default function App() {
     // Optimistic local update
     setBinders(p=>p.map(b=>{
       if(b.id!==activeBinder)return b;
-      const ex=b.cards.find(c=>c.id===card.id&&(c.condition||"NM")===(meta.condition||"NM")&&(c.foil||false)===(meta.foil||false));
-      if(ex)return{...b,cards:b.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};
+      const exIdx=b.cards.findIndex(c=>c.id===card.id&&(c.condition||"NM")===(meta.condition||"NM")&&(c.foil||false)===(meta.foil||false));
+      if(exIdx>=0){const cards=[...b.cards];cards[exIdx]={...cards[exIdx],qty:cards[exIdx].qty+1};return{...b,cards}}
       return{...b,cards:[...b.cards,{...card,qty:1,addedAt:Date.now(),condition:meta.condition||"NM",foil:meta.foil||false,language:meta.language||"en",...meta}]};
     }));
     const binderName=binders.find(b=>b.id===activeBinder)?.name||"collection";
@@ -1037,7 +1037,7 @@ export default function App() {
     if(isOnline.current) enqueueWrite(()=>cardsApi.add(activeBinder,card,meta));
   },[activeBinder,binders,toast]);
   const addDeck=useCallback(async(did,card,board="main")=>{
-    setDecks(p=>p.map(d=>{if(d.id!==did)return d;const ex=d.cards.find(c=>c.id===card.id&&c.board===board);if(ex)return{...d,cards:d.cards.map(c=>c===ex?{...c,qty:c.qty+1}:c)};return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
+    setDecks(p=>p.map(d=>{if(d.id!==did)return d;const exIdx=d.cards.findIndex(c=>c.id===card.id&&c.board===board);if(exIdx>=0){const cards=[...d.cards];cards[exIdx]={...cards[exIdx],qty:cards[exIdx].qty+1};return{...d,cards}}return{...d,cards:[...d.cards,{...card,qty:1,board}]}}));
     if(isOnline.current) enqueueWrite(()=>deckCardsApi.add(did,card,board));
   },[]);
 
@@ -1755,7 +1755,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const handleImport=async()=>{
     const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No valid entries found");return;}
     setImportStatus(`Importing ${entries.length} cards...`);let imported=0;
-    for(const entry of entries){try{const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();for(let i=0;i<entry.qty;i++)addDeck(deckId,card,entry.board);imported++}await new Promise(r=>setTimeout(r,80))}catch{}}
+    for(const entry of entries){try{await scryfallThrottle();const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();for(let i=0;i<entry.qty;i++)addDeck(deckId,card,entry.board);imported++;setImportStatus(`${imported}/${entries.length}...`)}}catch{}}
     setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
@@ -2035,6 +2035,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const [fColors,setFColors]=useState([]);const [fType,setFType]=useState("");const [fRarity,setFRarity]=useState("");const [fSet,setFSet]=useState("");const [fMinPrice,setFMinPrice]=useState("");
   const [slideIdx,setSlideIdx]=useState(-1);const [showFilters,setShowFilters]=useState(false);
   const [showNewBinder,setShowNewBinder]=useState(false);const [newBinderName,setNewBinderName]=useState("");
+  const [gridPage,setGridPage]=useState(0);const GRID_PAGE_SIZE=60;
   const [selectMode,setSelectMode]=useState(false);const [selected,setSelected]=useState(new Set());
   const [showImportColl,setShowImportColl]=useState(false);const [importCollText,setImportCollText]=useState("");const [importCollStatus,setImportCollStatus]=useState("");
 
@@ -2057,13 +2058,19 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     const entries=parseCollectionCSV(importCollText);
     if(!entries.length){setImportCollStatus("No valid entries");return;}
     setImportCollStatus(`Importing ${entries.length} cards...`);let imported=0;
-    for(const entry of entries){try{const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();setColl(p=>[...p,{...card,qty:entry.qty,addedAt:Date.now(),condition:entry.condition,foil:entry.foil,language:entry.language}]);imported++}await new Promise(r=>setTimeout(r,80))}catch{}}
+    const batch=[];
+    for(const entry of entries){try{await scryfallThrottle();const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();batch.push({...card,qty:entry.qty,addedAt:Date.now(),condition:entry.condition,foil:entry.foil,language:entry.language});imported++;setImportCollStatus(`${imported}/${entries.length}...`)}}catch{}}
+    if(batch.length)setColl(p=>[...p,...batch]);
     setImportCollStatus(`Imported ${imported}/${entries.length}`);toast(`Imported ${imported} cards`);
     setTimeout(()=>{setShowImportColl(false);setImportCollText("");setImportCollStatus("")},1500);
   };
 
   const [fTag,setFTag]=useState("");
-  const adj=(id,d)=>{setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));if(supabase){const card=coll.find(c=>c.id===id);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}};
+  const adj=(id,d,condition,foil)=>{
+    const match=c=>c.id===id&&(condition===undefined||(c.condition||"NM")===condition)&&(foil===undefined||(c.foil||false)===foil);
+    setColl(p=>{let found=false;return p.map(c=>{if(found||!match(c))return c;found=true;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean)});
+    if(supabase){const card=coll.find(match);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}
+  };
   const allTags=useMemo(()=>[...new Set(coll.flatMap(c=>c.tags||[]))].sort(),[coll]);
 
   const items=useMemo(()=>{
@@ -2156,19 +2163,21 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       <div style={{fontSize:13,color:T.textDim,fontStyle:"italic",lineHeight:1.6,fontFamily:F.body}}>{randomFlavor("binder")}</div>
     </div>
     :items.length===0?<div style={{textAlign:"center",padding:"40px 20px",color:T.textDim,fontFamily:F.body}}>The spell fizzles \u2014 no cards match</div>
-    :view==="grid"?<div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-      {items.map((c,i)=><div key={c.id} style={{position:"relative",borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${selected.has(c.id)?T.gold:T.cardBorder}`,cursor:"pointer",boxShadow:S.cardFrame}} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)}>
-        <img src={getImg(c,"small")} alt={c.name} style={{width:"100%",display:"block"}}/>
+    :view==="grid"?<><div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+      {items.slice(0,(gridPage+1)*GRID_PAGE_SIZE).map((c,i)=><div key={c.id+i} style={{position:"relative",borderRadius:4,overflow:"hidden",background:T.card,border:`1px solid ${selected.has(c.id)?T.gold:T.cardBorder}`,cursor:"pointer",boxShadow:S.cardFrame}} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)}>
+        <img src={getImg(c,"small")} alt={c.name} loading="lazy" style={{width:"100%",display:"block"}}/>
         {c.qty>1&&<div style={{position:"absolute",top:4,right:4,background:T.gold,color:"#000",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:800}}>{c.qty}</div>}
         <div style={{padding:"6px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span style={{fontSize:11,fontWeight:600,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
           <div style={{display:"flex",gap:2}}>
-            <button onClick={e=>{e.stopPropagation();adj(c.id,-1)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
-            <button onClick={e=>{e.stopPropagation();adj(c.id,1)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#0F1E15",color:T.green,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+            <button onClick={e=>{e.stopPropagation();adj(c.id,-1,c.condition,c.foil)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <button onClick={e=>{e.stopPropagation();adj(c.id,1,c.condition,c.foil)}} style={{width:32,height:32,borderRadius:6,border:"none",background:"#0F1E15",color:T.green,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
         </div>
       </div>)}
     </div>
+    {(gridPage+1)*GRID_PAGE_SIZE<items.length&&<button onClick={()=>setGridPage(p=>p+1)} style={{width:"100%",padding:12,marginTop:8,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.gold,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Load more ({items.length-(gridPage+1)*GRID_PAGE_SIZE} remaining)</button>}
+    </>
     :<VirtualList items={items} rowHeight={72} renderItem={(c,i)=><div key={c.id} onClick={()=>selectMode?toggleSelect(c.id):setSlideIdx(i)} style={{display:"flex",alignItems:"center",padding:"10px 12px",borderRadius:4,marginBottom:4,background:T.card,cursor:"pointer",backgroundImage:S.texture,border:`1px solid ${selected.has(c.id)?T.gold:"transparent"}`,height:68,boxSizing:"border-box"}}>
       <img src={getImg(c,"small")} alt={c.name} loading="lazy" style={{width:40,height:56,borderRadius:3,objectFit:"cover",marginRight:10}}/>
       <div style={{flex:1,minWidth:0}}>
@@ -2180,9 +2189,9 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
         </div>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-        <button onClick={e=>{e.stopPropagation();adj(c.id,-1)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+        <button onClick={e=>{e.stopPropagation();adj(c.id,-1,c.condition,c.foil)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
         <span style={{fontSize:14,fontWeight:700,minWidth:20,textAlign:"center",fontFamily:F.body}}>{c.qty}</span>
-        <button onClick={e=>{e.stopPropagation();adj(c.id,1)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#0F1E15",color:T.green,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        <button onClick={e=>{e.stopPropagation();adj(c.id,1,c.condition,c.foil)}} style={{width:30,height:30,borderRadius:4,border:"none",background:"#0F1E15",color:T.green,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
         <span style={{fontSize:12,color:T.green,minWidth:48,textAlign:"right",fontWeight:600,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
       </div>
     </div>}/>}
@@ -2190,9 +2199,9 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     {slideIdx>=0&&items[slideIdx]&&<CardSlider cards={items} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={card=>{const cc=coll.find(c=>c.id===card.id);return<div>
         <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:8}}>
-          <button onClick={()=>{adj(card.id,-1);if((cc?.qty||1)<=1)setSlideIdx(-1)}} style={{width:44,height:44,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+          <button onClick={()=>{adj(card.id,-1,cc?.condition,cc?.foil);if((cc?.qty||1)<=1)setSlideIdx(-1)}} style={{width:44,height:44,borderRadius:4,border:`2px solid ${T.red}`,background:"transparent",color:T.red,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           <span style={{fontSize:18,fontWeight:800,minWidth:30,textAlign:"center",fontFamily:F.heading}}>{cc?.qty||0}</span>
-          <button onClick={()=>adj(card.id,1)} style={{width:44,height:44,borderRadius:4,border:`2px solid ${T.green}`,background:"transparent",color:T.green,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+          <button onClick={()=>adj(card.id,1,cc?.condition,cc?.foil)} style={{width:44,height:44,borderRadius:4,border:`2px solid ${T.green}`,background:"transparent",color:T.green,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           <div style={{flex:1}}/>
           <span style={{fontSize:14,fontWeight:700,color:T.green,fontFamily:F.body}}>{fmt(card.foil?card.prices?.usd_foil:card.prices?.usd)}</span>
         </div>
@@ -2336,7 +2345,7 @@ function TradeView({toast}) {
     <div style={{background:T.card,borderRadius:4,border:`1px solid ${clr}22`,minHeight:100,padding:6,boxShadow:S.cardFrame}}>
       {cards.map(c=><div key={c.uid} style={{display:"flex",alignItems:"center",gap:4,padding:"5px 6px",borderRadius:4,marginBottom:3,background:T.cardInner}}>
         <img src={getImg(c,"small")} alt={c.name} style={{width:24,height:34,borderRadius:3,objectFit:"cover",flexShrink:0}}/>
-        <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:11,color:T.green,fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{fmt(c.prices?.usd)}</span></div>
+        <div style={{flex:1,minWidth:0}}><div style={{fontSize:10,fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</div><span style={{fontSize:11,color:c.prices?.usd?T.green:"#E8C349",fontFamily:F.body}}>{(c.qty||1)>1?`${c.qty}x `:""}{c.prices?.usd?fmt(c.prices.usd):"No price"}</span></div>
         <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
           <button onClick={()=>onAdj(c.uid,-1)} style={{width:28,height:28,borderRadius:6,border:"none",background:"#1E1215",color:T.red,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           <span style={{fontSize:10,fontWeight:700,minWidth:14,textAlign:"center",fontFamily:F.body}}>{c.qty||1}</span>
