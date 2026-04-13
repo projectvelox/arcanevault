@@ -1072,13 +1072,13 @@ export default function App() {
   const {toasts,show:toast}=useToast();
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
   const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);const [showAbout,setShowAbout]=useState(false);const [showDrawer,setShowDrawer]=useState(false);
-  const [userAvatar,setUserAvatar]=useState(null);
-  useEffect(()=>{if(user&&supabase)profileApi.get().then(({data})=>{if(data?.avatar_url)setUserAvatar(data.avatar_url)})},[user]);
   const [isNewVersion,setIsNewVersion]=useState(false);
   useEffect(()=>{store.get("av-last-version").then(v=>{if(v!==APP_VERSION){setIsNewVersion(true);store.set("av-last-version",APP_VERSION)}})},[]);
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [isOffline,setIsOffline]=useState(!navigator.onLine);
   const [user,setUser]=useState(null);
+  const [userAvatar,setUserAvatar]=useState(null);
+  useEffect(()=>{if(user&&supabase)profileApi.get().then(({data})=>{if(data?.avatar_url)setUserAvatar(data.avatar_url)})},[user]);
   const [authMode,setAuthMode]=useState(null); // null=hidden, "signin", "signup"
   const [authLoading,setAuthLoading]=useState(false);
   const [authError,setAuthError]=useState("");
