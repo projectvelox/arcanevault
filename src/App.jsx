@@ -18,17 +18,16 @@ function useDebounce(value, delay) {
 }
 
 // Global Scryfall rate limiter (50-100ms between requests)
-let _lastScryfallCall = 0;
-async function scryfallThrottle() {
-  const now = Date.now(); const diff = now - _lastScryfallCall;
-  if (diff < 80) await new Promise(r => setTimeout(r, 80 - diff));
-  _lastScryfallCall = Date.now();
+let _scryfallQueue = Promise.resolve();
+function scryfallThrottle() {
+  _scryfallQueue = _scryfallQueue.then(() => new Promise(r => setTimeout(r, 85)));
+  return _scryfallQueue;
 }
 
 async function searchScryfall(query, colors = [], type = "", set = "", extra = {}) {
   let parts = [];
   if (query) parts.push(query);
-  if (colors.length) parts.push(`id>=${colors.join("").toLowerCase()}`);
+  if (colors.length) parts.push(`id<=${colors.join("").toLowerCase()}`);
   if (type) parts.push(`t:${type}`);
   if (set) parts.push(`set:${set}`);
   if (extra.rarity) parts.push(`r:${extra.rarity}`);
@@ -59,7 +58,7 @@ async function searchCards(query, colors = [], type = "") {
   if (query.length < 2 && !colors.length && !type) return [];
   let parts = [];
   if (query) parts.push(query);
-  if (colors.length) parts.push(`id>=${colors.join("").toLowerCase()}`);
+  if (colors.length) parts.push(`id<=${colors.join("").toLowerCase()}`);
   if (type) parts.push(`t:${type}`);
   if (!parts.length) return [];
   try {
@@ -137,7 +136,7 @@ async function getCachedCards() {
 async function cacheSearchResults(cards) {
   const existing = await getCachedCards();
   const map = new Map(existing.map(c => [c.id, c]));
-  cards.forEach(c => map.set(c.id, { id: c.id, name: c.name, set: c.set, set_name: c.set_name, mana_cost: c.mana_cost, cmc: c.cmc, type_line: c.type_line, rarity: c.rarity, color_identity: c.color_identity, prices: c.prices, image_uris: c.image_uris, oracle_text: c.oracle_text }));
+  cards.forEach(c => map.set(c.id, { id: c.id, name: c.name, set: c.set, set_name: c.set_name, mana_cost: c.mana_cost, cmc: c.cmc, type_line: c.type_line, rarity: c.rarity, color_identity: c.color_identity, prices: c.prices, image_uris: c.image_uris, card_faces: c.card_faces, oracle_text: c.oracle_text, layout: c.layout }));
   const all = [...map.values()].slice(-2000); // Keep last 2000 unique cards
   searchCache.data = all;
   await store.set("av-card-cache", all);
@@ -767,7 +766,8 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const onTM=e=>{if(dragging)setDragX(e.touches[0].clientX-startX.current)};
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
   const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;
-  const cardImgSrc=flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card);
+  const getFlipImg=()=>{if(!flipped||!card.card_faces?.[1])return getImg(card);return card.card_faces[1].image_uris?.normal||card.card_faces[1].image_uris?.large||getImg(card)};
+  const cardImgSrc=getFlipImg();
 
   return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
     <ArtBg src={getImg(card)} opacity={.25} blur={40} gradient={false}/>
@@ -785,7 +785,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         {!imgLoaded&&!imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:32,height:32,border:`3px solid ${T.gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/></div>}
         <img src={cardImgSrc} alt={card.name} onLoad={()=>setImgLoaded(true)} onError={()=>setImgError(true)} style={{width:"100%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)${flipped?" rotateY(180deg)":""}`,transition:dragging?"none":"transform .4s",pointerEvents:"none",objectFit:"contain",opacity:imgLoaded?1:0}}/>
         {imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}><span style={{fontSize:32}}>🃏</span><span style={{fontSize:13,color:T.textMuted,fontFamily:F.body}}>Image failed to load</span></div>}
-        {card.card_faces?.length>1&&card.card_faces[1]?.image_uris&&<button onClick={()=>setFlipped(!flipped)} style={{position:"absolute",bottom:8,right:8,width:36,height:36,borderRadius:18,background:"rgba(0,0,0,.7)",border:`1.5px solid ${T.gold}`,color:T.gold,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}} title="Flip card">{"\u21BB"}</button>}
+        {card.card_faces?.length>1&&<button onClick={()=>setFlipped(!flipped)} style={{position:"absolute",bottom:8,right:8,width:36,height:36,borderRadius:18,background:"rgba(0,0,0,.7)",border:`1.5px solid ${T.gold}`,color:T.gold,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}} title="Flip card">{"\u21BB"}</button>}
       </div>
       <div style={{marginTop:12,textAlign:"center",width:"100%",maxWidth:340}}>
         <h3 style={{margin:"0 0 4px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5}}>{card.name}</h3>
@@ -797,7 +797,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         {card.set_name&&<div style={{fontSize:12,color:T.textDim,marginTop:3,fontFamily:F.body}}>{card.set_name} ({card.set?.toUpperCase()})</div>}
         {card.power&&<div style={{fontSize:15,color:T.gold,marginTop:4,fontWeight:700,fontFamily:F.heading}}>{card.power}/{card.toughness}</div>}
         <div style={{marginTop:8,padding:12,background:T.cardInner,borderRadius:12,fontSize:13,color:"#CCC",lineHeight:1.7,textAlign:"left",fontFamily:F.body,boxShadow:S.insetInput}}>
-          {(card.oracle_text||card.card_faces?.[0]?.oracle_text||"").split("\n").map((l,i,a)=><div key={i} style={{marginBottom:i<a.length-1?4:0}}>{l}</div>)}
+          {(card.oracle_text||(card.card_faces||[]).map(f=>f.oracle_text).filter(Boolean).join("\n//\n")||"").split("\n").map((l,i,a)=><div key={i} style={{marginBottom:i<a.length-1?4:0}}>{l==="//​"||l==="//"?<hr style={{border:"none",borderTop:`1px solid ${T.cardBorder}`,margin:"4px 0"}}/>:l}</div>)}
           {card.flavor_text&&<div style={{marginTop:8,paddingTop:8,borderTop:`1px solid ${T.cardBorder}`,fontStyle:"italic",color:T.textDim,fontSize:12}}>{card.flavor_text}</div>}
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:12,marginTop:8}}>
