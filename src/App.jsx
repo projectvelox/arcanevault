@@ -755,18 +755,18 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
   const [flipped,setFlipped]=useState(false);
   const [priceSnaps,setPriceSnaps]=useState([]);
+  const [imgLoaded,setImgLoaded]=useState(false);
+  const [imgError,setImgError]=useState(false);
+  const startX=useRef(0);
   useEffect(()=>{if(supabase&&card?.id)priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))},[card?.id]);
-  const startX=useRef(0); if(!card) return null;
+  useEffect(()=>{setImgLoaded(false);setImgError(false);setFlipped(false)},[index]);
+  if(!card) return null;
   const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
   const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
   const onTS=e=>{startX.current=e.touches[0].clientX;setDragging(true);setDragX(0)};
   const onTM=e=>{if(dragging)setDragX(e.touches[0].clientX-startX.current)};
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
   const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;
-
-  const [imgLoaded,setImgLoaded]=useState(false);
-  const [imgError,setImgError]=useState(false);
-  useEffect(()=>{setImgLoaded(false);setImgError(false);setFlipped(false)},[index]);
   const cardImgSrc=flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card);
 
   return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
@@ -1759,7 +1759,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
-  const handleExport=(fmt="text")=>{const text=exportDeckList(deck,fmt);navigator.clipboard.writeText(text).then(()=>toast(`Decklist copied (${fmt==="arena"?"Arena":"text"} format)`)).catch(()=>window.prompt("Copy:",text))};
+  const handleExport=(expFmt="text")=>{const text=exportDeckList(deck,expFmt);navigator.clipboard.writeText(text).then(()=>toast(`Decklist copied (${expFmt==="arena"?"Arena":"text"} format)`)).catch(()=>window.prompt("Copy:",text))};
 
   const fetchSuggestions=async()=>{
     if(sugLoading)return;setSugLoading(true);
@@ -2062,6 +2062,10 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     setTimeout(()=>{setShowImportColl(false);setImportCollText("");setImportCollStatus("")},1500);
   };
 
+  const [fTag,setFTag]=useState("");
+  const adj=(id,d)=>{setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));if(supabase){const card=coll.find(c=>c.id===id);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}};
+  const allTags=useMemo(()=>[...new Set(coll.flatMap(c=>c.tags||[]))].sort(),[coll]);
+
   const items=useMemo(()=>{
     let r=[...coll];
     if(filter)r=r.filter(c=>c.name.toLowerCase().includes(filter.toLowerCase()));
@@ -2074,10 +2078,6 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     r.sort((a,b)=>{if(sort==="name")return a.name.localeCompare(b.name);if(sort==="price")return(parseFloat(b.prices?.usd||0))-(parseFloat(a.prices?.usd||0));if(sort==="recent")return(b.addedAt||0)-(a.addedAt||0);return 0});
     return r;
   },[coll,filter,sort,fColors,fType,fRarity,fSet,fMinPrice,fTag]);
-
-  const [fTag,setFTag]=useState("");
-  const adj=(id,d)=>{setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));if(supabase){const card=coll.find(c=>c.id===id);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}};
-  const allTags=useMemo(()=>[...new Set(coll.flatMap(c=>c.tags||[]))].sort(),[coll]);
   const hasFilters=fColors.length||fType||fRarity||fSet||fMinPrice||fTag;
   const collSets=useMemo(()=>[...new Set(coll.map(c=>c.set||c.set_code).filter(Boolean))].sort(),[coll]);
 
