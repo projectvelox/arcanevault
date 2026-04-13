@@ -604,9 +604,10 @@ function RarityBadge({rarity,sz=16}) {
   const c = RARITY_CLR[rarity] || RARITY_CLR.common;
   return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:sz,height:sz,borderRadius:3,background:`${c}22`,border:`1px solid ${c}55`,fontSize:Math.max(sz*.55,10),fontWeight:800,color:c,flexShrink:0,lineHeight:1}}>{(rarity||"c")[0].toUpperCase()}</span>;
 }
+const COLOR_NAMES={W:"White",U:"Blue",B:"Black",R:"Red",G:"Green"};
 function ColorPills({colors,setColors,size=34}) {
   return <>{Object.keys(MCLR).map(c=>(
-    <button key={c} onClick={()=>setColors(p=>p.includes(c)?p.filter(x=>x!==c):[...p,c])} style={{width:size,height:size,borderRadius:"50%",border:colors.includes(c)?`2.5px solid ${T.gold}`:"2px solid #333",background:MCLR[c],fontSize:Math.max(size*.35,10),fontWeight:800,color:MTXT[c],cursor:"pointer",opacity:colors.includes(c)?1:.45,transition:"all .15s",flexShrink:0}}>{c}</button>
+    <button key={c} onClick={()=>setColors(p=>p.includes(c)?p.filter(x=>x!==c):[...p,c])} title={COLOR_NAMES[c]||c} aria-label={`Filter by ${COLOR_NAMES[c]||c}`} style={{width:size,height:size,borderRadius:"50%",border:colors.includes(c)?`2.5px solid ${T.gold}`:"2px solid #333",background:MCLR[c],fontSize:Math.max(size*.35,10),fontWeight:800,color:MTXT[c],cursor:"pointer",opacity:colors.includes(c)?1:.45,transition:"all .15s",flexShrink:0}}>{c}</button>
   ))}</>;
 }
 function TypeSelect({type,setType,h=34}) {
@@ -1296,7 +1297,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
             {autocomplete.slice(0,8).map(name=><div key={name} onMouseDown={()=>{setQ(name);setAutocomplete([])}} style={{padding:"10px 14px",cursor:"pointer",fontSize:13,color:T.text,fontFamily:F.body,borderBottom:`1px solid ${T.cardBorder}`}}>{name}</div>)}
           </div>}
         </div>
-        <button onClick={()=>fileRef.current?.click()} style={{width:52,height:52,borderRadius:14,border:`2px solid ${T.gold}`,background:T.cardInner,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:S.goldGlow}} title="Divine a card">{I.camera(T.gold)}</button>
+        <button onClick={()=>fileRef.current?.click()} aria-label="Scan a card with camera" style={{width:52,height:52,borderRadius:14,border:`2px solid ${T.gold}`,background:T.cardInner,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:S.goldGlow,gap:1}} title="Scan a card">{I.camera(T.gold)}<span style={{fontSize:8,color:T.gold,fontWeight:700,fontFamily:F.body}}>Scan</span></button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
       </div>
       <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4,alignItems:"center",WebkitOverflowScrolling:"touch"}}>
@@ -1305,12 +1306,12 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         <select value={set} onChange={e=>{setSet(e.target.value);if(e.target.value){setBrowseSet(null)}}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
         {set&&<button onClick={async()=>{if(browseSet===set){setBrowseSet(null);return;}setBrowseSet(set);setSLoading(true);const c=await fetchSetCards(set);setSetCards(c);setSLoading(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${browseSet?T.gold:T.cardBorder}`,background:browseSet?T.goldGlow:"transparent",color:browseSet?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>{sLoading?"...":"Checklist"}</button>}
         {hasQuery&&<button onClick={()=>{setQ("");setColors([]);setType("");setSet("");setRarity("");setCmcOp("");setOText("");setShowAdv(false)}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>Clear</button>}
-        <select value={sortResults} onChange={e=>setSortResults(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:34,textAlign:"center"}}><option value="name">Name</option><option value="price">Price</option><option value="cmc">MV</option><option value="edhrec">Popular</option></select>
+        <select value={sortResults} onChange={e=>setSortResults(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:34,textAlign:"center"}}><option value="name">Name</option><option value="price">Price</option><option value="cmc">Mana Cost</option><option value="edhrec">Popular</option></select>
         <button onClick={()=>setShowAdv(!showAdv)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${showAdv||(rarity||cmcOp||oText)?T.gold+"66":T.cardBorder}`,background:showAdv?T.goldGlow:"transparent",color:showAdv||rarity||cmcOp||oText?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>More</button>
       </div>
       {showAdv&&<div style={{display:"flex",gap:6,marginTop:6,overflowX:"auto",alignItems:"center",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
         <select value={rarity} onChange={e=>setRarity(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">Rarity</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="mythic">Mythic</option></select>
-        <select value={cmcOp} onChange={e=>setCmcOp(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">MV</option>{[0,1,2,3,4,5,6,7].map(n=><option key={n} value={`=${n}`}>{n}</option>)}<option value=">=8">8+</option></select>
+        <select value={cmcOp} onChange={e=>setCmcOp(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">Mana</option>{[0,1,2,3,4,5,6,7].map(n=><option key={n} value={`=${n}`}>{n}</option>)}<option value=">=8">8+</option></select>
         <input value={oText} onChange={e=>setOText(e.target.value)} placeholder="Oracle text..." style={{flex:1,padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,height:30,minWidth:80,fontFamily:F.body,boxSizing:"border-box"}}/>
       </div>}
       <div style={{fontSize:12,color:T.textDim,marginTop:4,fontFamily:F.body}}>
@@ -1600,7 +1601,7 @@ function VaultView({decks,setDecks,addDeck,binders,setBinders,activeBinder,setAc
 // GRIMOIRES LIST (decks)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function DecksList({decks,setDecks,onOpen,toast}) {
-  const [showNew,setShowNew]=useState(false);const [name,setName]=useState("");const [format,setFormat]=useState("commander");
+  const [showNew,setShowNew]=useState(false);const [name,setName]=useState("");const [format,setFormat]=useState("standard");
   const [deleteTarget,setDeleteTarget]=useState(null);const [sortBy,setSortBy]=useState("recent");
 
   const sortedDecks=useMemo(()=>{const d=[...decks];if(sortBy==="name")d.sort((a,b)=>a.name.localeCompare(b.name));else if(sortBy==="format")d.sort((a,b)=>a.format.localeCompare(b.format));else d.sort((a,b)=>(b.ts||0)-(a.ts||0));return d},[decks,sortBy]);
@@ -1832,7 +1833,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       </div>}
       {warnings.filter(w=>w.severity==="ok").length>0&&warnings.filter(w=>w.severity!=="ok").length===0&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:600,color:T.green,padding:"4px 8px",borderRadius:4,background:"#0F2A1Aaa",fontFamily:F.body}}>{I.check(T.green)} {warnings.find(w=>w.severity==="ok").msg}</div>}
 
-      {statsOpen&&<>
+      {statsOpen&&stats.total>0&&<>
         <div style={{marginTop:12,marginBottom:10}}>
           <div style={{fontSize:10,color:T.textMuted,marginBottom:6,fontWeight:600,textTransform:"uppercase",letterSpacing:.5,fontFamily:F.body}}>Mana Curve</div>
           <div style={{display:"flex",alignItems:"flex-end",gap:4,height:48}}>
