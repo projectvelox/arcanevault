@@ -717,8 +717,9 @@ function SkeletonGrid({count=6}) {
 // BOTTOM SHEET + CONFIRM
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 function BottomSheet({open,onClose,children}) {
+  useEffect(()=>{if(open){document.body.style.overflow="hidden";return()=>{document.body.style.overflow=""}}});
   if(!open) return null;
-  return <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column",justifyContent:"flex-end"}} onClick={onClose}>
+  return <div style={{position:"fixed",inset:0,zIndex:200,display:"flex",flexDirection:"column",justifyContent:"flex-end",overscrollBehavior:"contain"}} onClick={onClose}>
     <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.7)"}}/>
     <div onClick={e=>e.stopPropagation()} style={{position:"relative",background:T.surface,borderRadius:"20px 20px 0 0",maxHeight:"88vh",overflow:"auto",paddingBottom:32,animation:"slideUp .25s ease-out",backgroundImage:S.texture}}>
       <div style={{display:"flex",justifyContent:"center",padding:"10px 0 4px"}}><div style={{width:40,height:4,borderRadius:2,background:"#3A3D4E"}}/></div>
@@ -775,6 +776,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   useEffect(()=>{if(supabase&&card?.id)priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))},[card?.id]);
   const [loadingPrint,setLoadingPrint]=useState(false);const [loadingRule,setLoadingRule]=useState(false);
   useEffect(()=>{setImgLoaded(false);setImgError(false);setFlipped(false)},[index]);
+  useEffect(()=>{document.body.style.overflow="hidden";return()=>{document.body.style.overflow=""}},[]);
   if(!card) return null;
   const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setLoadingPrint(true);setPrintings(await fetchPrintings(card.name));setLoadingPrint(false);setShowPrintings(true);setShowRulings(false)};
   const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setLoadingRule(true);setRulings(await fetchRulings(card.rulings_uri));setLoadingRule(false);setShowRulings(true);setShowPrintings(false)};
@@ -785,7 +787,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const getFlipImg=()=>{if(!flipped||!card.card_faces?.[1])return getImg(card);return card.card_faces[1].image_uris?.normal||card.card_faces[1].image_uris?.large||getImg(card)};
   const cardImgSrc=getFlipImg();
 
-  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)",overscrollBehavior:"contain"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
     <ArtBg src={getImg(card)} opacity={.25} blur={40} gradient={false}/>
     <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
@@ -1033,9 +1035,9 @@ export default function App() {
     setReady(true);
   })()},[user]);
 
-  // Persist to IndexedDB when offline
-  useEffect(()=>{if(ready&&!user)store.set("av-decks",decks)},[decks,ready,user]);
-  useEffect(()=>{if(ready&&!user)store.set("av-binders",binders)},[binders,ready,user]);
+  // Persist to IndexedDB (always — local backup even for logged-in users)
+  useEffect(()=>{if(ready)store.set("av-decks",decks)},[decks,ready]);
+  useEffect(()=>{if(ready)store.set("av-binders",binders)},[binders,ready]);
 
   // Derived: flat collection of all cards across binders (for "you own" badges)
   const allCollCards=useMemo(()=>{const m=new Map();binders.forEach(b=>b.cards.forEach(c=>{const ex=m.get(c.id);if(ex)m.set(c.id,{...ex,qty:ex.qty+c.qty});else m.set(c.id,{...c})}));return m},[binders]);
@@ -1194,6 +1196,7 @@ export default function App() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SEARCH (with Card of the Day)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+let _setsCache=[],_cotdCache=null;
 function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const [q,setQ]=useState("");const [colors,setColors]=useState([]);const [type,setType]=useState("");
   const [set,setSet]=useState("");const [sets,setSets]=useState([]);
@@ -1211,7 +1214,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
   const scanAbort=useRef(false);const [scanCount,setScanCount]=useState(0);const [batchMode,setBatchMode]=useState(false);
   const fileRef=useRef();
 
-  useEffect(()=>{fetchSets().then(setSets);fetchRandomCard().then(setCotd)},[]);
+  useEffect(()=>{if(_setsCache.length)setSets(_setsCache);else fetchSets().then(s=>{_setsCache=s;setSets(s)});if(_cotdCache)setCotd(_cotdCache);else fetchRandomCard().then(c=>{_cotdCache=c;setCotd(c)})},[]);
   // Autocomplete
   const dQAc=useDebounce(q,200);
   useEffect(()=>{if(dQAc.length>=2&&acFocused)fetchAutocomplete(dQAc).then(setAutocomplete);else setAutocomplete([])},[dQAc,acFocused]);
@@ -1705,6 +1708,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [mullPhase,setMullPhase]=useState(null);
   const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
   const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);const [importing,setImporting]=useState(false);
+  const notesTimer=useRef(null);
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
@@ -1759,7 +1763,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{name:newName.trim()}));
   };
   const updateNotes=(text)=>{setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
-    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{notes:text}));
+    if(isOnline.current){clearTimeout(notesTimer.current);notesTimer.current=setTimeout(()=>enqueueWrite(()=>decksApi.update(deckId,{notes:text})),800)}
   };
 
   const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
