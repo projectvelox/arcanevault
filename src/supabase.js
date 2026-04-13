@@ -334,5 +334,53 @@ export const profileApi = {
     if (!user) return { error: { message: 'Not authenticated' } };
     const { data, error } = await supabase.from('profiles').update(updates).eq('id', user.id).select().single();
     return { data, error };
+  },
+  async getByDisplayName(name) {
+    if (!supabase) return { data: null };
+    const { data, error } = await supabase.from('profiles').select('id,display_name,bio,avatar_url,favorite_color,stats').ilike('display_name', name).limit(1).single();
+    return { data, error };
+  }
+};
+
+// Match Rooms
+export const matchApi = {
+  async create(matchCode, deckId, deckName, format) {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+    // Use trade_history table with a special type field for match rooms
+    const { data, error } = await supabase.from('trade_history').insert({
+      user_id: user.id,
+      trade_date: new Date().toISOString().split('T')[0],
+      give: [{ type: 'match_room', code: matchCode, deck_id: deckId, deck_name: deckName, format, host_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'Player', status: 'waiting' }],
+      recv: [],
+      give_total: 0,
+      recv_total: 0,
+    }).select().single();
+    return { data, error };
+  },
+  async find(matchCode) {
+    if (!supabase) return { data: null };
+    const { data, error } = await supabase.from('trade_history')
+      .select('*')
+      .contains('give', [{ type: 'match_room', code: matchCode }])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+    return { data, error };
+  },
+  async join(matchId, deckName, format) {
+    const user = await getUser();
+    if (!user) return { error: 'Not authenticated' };
+    const { data, error } = await supabase.from('trade_history')
+      .update({ recv: [{ guest_name: user.user_metadata?.display_name || user.email?.split('@')[0] || 'Player', guest_id: user.id, deck_name: deckName, format, joined_at: new Date().toISOString() }] })
+      .eq('id', matchId)
+      .select().single();
+    return { data, error };
+  },
+  async updateResult(matchId, result) {
+    const { data, error } = await supabase.from('trade_history')
+      .update({ give_total: result === 'host_win' ? 1 : 0, recv_total: result === 'guest_win' ? 1 : 0 })
+      .eq('id', matchId);
+    return { data, error };
   }
 };

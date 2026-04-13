@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, cardsApi, decksApi, deckCardsApi, tradeApi, profileApi, sharingApi, priceApi } from "./supabase.js";
+import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, cardsApi, decksApi, deckCardsApi, tradeApi, profileApi, sharingApi, priceApi, matchApi } from "./supabase.js";
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // SCRYFALL API
@@ -1061,7 +1061,9 @@ export default function App() {
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const shareId=params.get("deck");
+    const matchCode=params.get("match");
     if(shareId&&supabase){sharingApi.getSharedDeck(shareId).then(({data})=>{if(data)setSharedDeck(data);else setSharedDeck({error:true})}).catch(()=>setSharedDeck({error:true}))}
+    if(matchCode){setTab("trade");window.history.replaceState({},"",window.location.pathname)}
   },[]);
   const [decks,setDecks]=useState([]);
   const [binders,setBinders]=useState([{id:"main",name:"Collection",cards:[]},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}]);
@@ -1369,7 +1371,7 @@ export default function App() {
       <div key={tab} style={{animation:"fadeSlideIn .25s ease-out"}}>
       {tab==="search"&&<SearchView addColl={addColl} addDeck={addDeck} decks={decks} toast={toast} allCollCards={allCollCards}/>}
       {tab==="vault"&&<VaultView decks={decks} setDecks={setDecks} addDeck={addDeck} binders={binders} setBinders={setBinders} activeBinder={activeBinder} setActiveBinder={setActiveBinder} toast={toast} allCollCards={allCollCards} isOnline={isOnline} user={user}/>}
-      {tab==="trade"&&<TradeView toast={toast} decks={decks} setDecks={setDecks}/>}
+      {tab==="trade"&&<TradeView toast={toast} decks={decks} setDecks={setDecks} user={user}/>}
       </div>
     </div>
 
@@ -2624,7 +2626,7 @@ function GameTools({toast}) {
   </div>;
 }
 
-function TradeView({toast,decks,setDecks}) {
+function TradeView({toast,decks,setDecks,user}) {
   const [give,setGive]=useState([]);const [recv,setRecv]=useState([]);
   const [side,setSide]=useState(null);const [q,setQ]=useState("");const [results,setResults]=useState([]);
   const [history,setHistory]=useState([]);const [showHistory,setShowHistory]=useState(false);
@@ -2733,15 +2735,22 @@ function TradeView({toast,decks,setDecks}) {
     </div>}
 
     {/* Rivals Tracker */}
-    <RivalsTracker decks={decks} setDecks={setDecks} toast={toast}/>
+    <RivalsTracker decks={decks} setDecks={setDecks} toast={toast} user={user}/>
   </div>;
 }
 
-function RivalsTracker({decks,setDecks,toast}) {
-  const [view,setView]=useState("rivals"); // "rivals" | "history"
+function RivalsTracker({decks,setDecks,toast,user}) {
+  const [view,setView]=useState("rivals"); // "rivals" | "history" | "profile"
   const [showLogGame,setShowLogGame]=useState(false);
   const [logDeck,setLogDeck]=useState("");const [logOpp,setLogOpp]=useState("");const [logResult,setLogResult]=useState("W");
   const [filterOpp,setFilterOpp]=useState("");
+  // Match Room state
+  const [matchRoom,setMatchRoom]=useState(null); // {code,deckId,status,opponent}
+  const [joinCode,setJoinCode]=useState("");
+  // Profile state
+  const [profile,setProfile]=useState({bio:"",favoriteColor:"",avatar:""});
+  const [editingProfile,setEditingProfile]=useState(false);
+  useEffect(()=>{if(user&&supabase)profileApi.get().then(({data})=>{if(data)setProfile({bio:data.bio||"",favoriteColor:data.favorite_color||"",avatar:data.avatar_url||""})});},[user]);
 
   // All matches as a flat timeline
   const allMatches=useMemo(()=>{
@@ -2784,6 +2793,53 @@ function RivalsTracker({decks,setDecks,toast}) {
     setLogOpp("");setShowLogGame(false);
   };
 
+  // Match Room functions
+  const createMatchRoom=async()=>{
+    if(!logDeck){toast("Pick a deck first","error");return}
+    const code=Math.random().toString(36).substring(2,8).toUpperCase();
+    const dk=decks.find(d=>d.id===logDeck);
+    setMatchRoom({code,deckId:logDeck,deckName:dk?.name||"My Deck",status:"waiting",opponent:null,format:dk?.format||"standard"});
+    if(supabase&&user)matchApi.create(code,logDeck,dk?.name,dk?.format).catch(()=>{});
+    toast("Match room created! Share the code or QR");
+  };
+  const joinMatchRoom=async()=>{
+    if(!joinCode.trim())return;
+    const code=joinCode.trim().toUpperCase();
+    if(supabase){
+      const{data}=await matchApi.find(code);
+      if(data){
+        const host=data.give?.[0];
+        const dk=decks.find(d=>d.id===logDeck);
+        setMatchRoom({code,deckId:logDeck,deckName:dk?.name||"My Deck",status:"joined",opponent:host?.host_name||"Opponent",format:host?.format||"standard"});
+        await matchApi.join(data.id,dk?.name,dk?.format);
+        toast(`Joined ${host?.host_name||"opponent"}'s match!`);setJoinCode("");
+      }else{toast("Match room not found","error")}
+    }else{
+      setMatchRoom({code,deckId:logDeck,status:"joined",opponent:code,format:"standard"});
+      toast("Connected!");setJoinCode("");
+    }
+  };
+  const logMatchResult=(result)=>{
+    if(!matchRoom)return;
+    const opp=matchRoom.opponent||matchRoom.code;const deckId=matchRoom.deckId;
+    setDecks(p=>p.map(d=>{
+      if(d.id!==deckId)return d;
+      const entry={result,vs:opp,date:new Date().toISOString().split("T")[0]};
+      const up=result==="W"?{wins:(d.wins||0)+1,matchLog:[...(d.matchLog||[]),entry]}:{losses:(d.losses||0)+1,matchLog:[...(d.matchLog||[]),entry]};
+      if(supabase)enqueueWrite(()=>decksApi.update(deckId,up));
+      return{...d,...up};
+    }));
+    toast(`${result==="W"?"Victory":"Defeat"} vs ${matchRoom.opponent||matchRoom.code}!`);
+    setMatchRoom(null);
+  };
+  const saveProfile=async()=>{
+    if(!supabase||!user)return;
+    await profileApi.update({bio:profile.bio,favorite_color:profile.favoriteColor,avatar_url:profile.avatar});
+    toast("Profile saved!");setEditingProfile(false);
+  };
+  const displayName=user?.user_metadata?.display_name||user?.email?.split("@")[0]||"Planeswalker";
+  const qrUrl=matchRoom?`${window.location.origin}?match=${matchRoom.code}`:"";
+
   const totalGames=allMatches.length;
   const totalWins=allMatches.filter(m=>m.result==="W").length;
   const filteredHistory=filterOpp?allMatches.filter(m=>(m.vs||"").toLowerCase().includes(filterOpp.toLowerCase())):allMatches;
@@ -2792,31 +2848,80 @@ function RivalsTracker({decks,setDecks,toast}) {
   const oppNames=useMemo(()=>[...new Set(allMatches.map(m=>(m.vs||"").trim()).filter(Boolean))].sort(),[allMatches]);
 
   return <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${T.cardBorder}`}}>
-    {/* Header */}
+    {/* Header + Profile mini */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <span style={{fontSize:18}}>{"\u2694\uFE0F"}</span>
+        <button onClick={()=>setView(view==="profile"?"rivals":"profile")} style={{width:36,height:36,borderRadius:18,background:profile.avatar?`url(${profile.avatar}) center/cover`:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:800,color:"#000",fontFamily:F.heading,border:view==="profile"?`2px solid ${T.gold}`:"2px solid transparent",cursor:"pointer",flexShrink:0,overflow:"hidden"}}>
+          {!profile.avatar&&(displayName[0]||"?").toUpperCase()}
+        </button>
         <div>
           <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Battle Log</div>
-          {totalGames>0&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>
-            {totalGames} game{totalGames!==1?"s":""} \u2022 {totalWins}W-{totalGames-totalWins}L ({Math.round(totalWins/totalGames*100)}%)
-            {supabase&&<span style={{color:T.gold}}> \u2022 synced</span>}
-          </div>}
+          <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>
+            {totalGames>0?<>{totalWins}W-{totalGames-totalWins}L ({Math.round(totalWins/totalGames*100)}%){supabase&&<span style={{color:T.gold}}> \u2022 synced</span>}</>:"Ready for battle"}
+          </div>
         </div>
       </div>
-      <button onClick={()=>setShowLogGame(!showLogGame)} style={{padding:"6px 12px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:showLogGame?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+ Log Game</button>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>{setShowLogGame(false);setMatchRoom(matchRoom?null:{code:"",status:"setup"})}} style={{padding:"6px 10px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:matchRoom?`${T.purple}15`:"transparent",color:T.purple,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>{"\u2694\uFE0F"} Match</button>
+        <button onClick={()=>{setMatchRoom(null);setShowLogGame(!showLogGame)}} style={{padding:"6px 10px",borderRadius:4,border:`1.5px solid ${T.gold}`,background:showLogGame?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+ Quick Log</button>
+      </div>
     </div>
 
-    {/* Log Game form */}
-    {showLogGame&&<div style={{background:T.card,borderRadius:8,border:`1px solid ${T.gold}33`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
-      <div style={{fontSize:13,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:10}}>Log a Game</div>
+    {/* Match Room */}
+    {matchRoom&&<div style={{background:T.card,borderRadius:8,border:`1px solid ${T.purple}33`,padding:16,marginBottom:12,boxShadow:S.cardFrame}}>
+      {matchRoom.status==="setup"&&<>
+        <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,textAlign:"center"}}>{"\u2694\uFE0F"} Start a Match</div>
+        <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:12,textAlign:"center"}}>Create a room or join one with a code</div>
+        <select value={logDeck} onChange={e=>setLogDeck(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,marginBottom:10,boxSizing:"border-box"}}>
+          <option value="">Pick your deck...</option>
+          {(decks||[]).map(d=><option key={d.id} value={d.id}>{d.name} ({d.format})</option>)}
+        </select>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={createMatchRoom} disabled={!logDeck} style={{flex:1,padding:12,borderRadius:4,border:"none",background:logDeck?`linear-gradient(135deg,${T.purple},#6B3FA0)`:"#333",color:logDeck?"#fff":"#666",fontSize:13,fontWeight:700,cursor:logDeck?"pointer":"default",fontFamily:F.body}}>Create Room</button>
+          <div style={{flex:1,display:"flex",gap:4}}>
+            <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} placeholder="CODE" maxLength={6} onKeyDown={e=>e.key==="Enter"&&joinMatchRoom()} style={{flex:1,padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,fontFamily:"monospace",textAlign:"center",letterSpacing:2,boxSizing:"border-box",textTransform:"uppercase"}}/>
+            <button onClick={joinMatchRoom} disabled={!joinCode.trim()||!logDeck} style={{padding:"8px 12px",borderRadius:4,border:"none",background:joinCode.trim()&&logDeck?T.gold:"#333",color:joinCode.trim()&&logDeck?"#000":"#666",fontSize:12,fontWeight:700,cursor:joinCode.trim()&&logDeck?"pointer":"default",fontFamily:F.body}}>Join</button>
+          </div>
+        </div>
+      </>}
+      {matchRoom.status==="waiting"&&<>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:11,color:T.purple,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:8,fontFamily:F.heading}}>Waiting for Opponent</div>
+          <div style={{fontSize:36,fontWeight:900,letterSpacing:8,color:T.accent,fontFamily:"monospace",marginBottom:12}}>{matchRoom.code}</div>
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&bgcolor=0C0E14&color=C9A96E&data=${encodeURIComponent(qrUrl)}`} alt="Match QR code" style={{width:160,height:160,borderRadius:8,border:`2px solid ${T.gold}33`,marginBottom:10}}/>
+          <div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginBottom:10}}>Show this QR code to your opponent, or share the code above</div>
+          <div style={{display:"flex",gap:6,justifyContent:"center"}}>
+            <button onClick={()=>{navigator.clipboard.writeText(matchRoom.code).then(()=>toast("Code copied!"))}} style={{padding:"8px 16px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Copy Code</button>
+            <button onClick={()=>{navigator.clipboard.writeText(qrUrl).then(()=>toast("Link copied!"))}} style={{padding:"8px 16px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Copy Link</button>
+          </div>
+          <div style={{marginTop:12,fontSize:12,color:T.textMuted,fontFamily:F.body}}>Playing with: <span style={{color:T.accent,fontWeight:700}}>{matchRoom.deckName}</span></div>
+        </div>
+      </>}
+      {matchRoom.status==="joined"&&<>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:11,color:T.green,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:6,fontFamily:F.heading}}>Match in Progress</div>
+          <div style={{fontSize:16,fontWeight:700,color:T.text,fontFamily:F.heading,marginBottom:4}}>You vs <span style={{color:T.purple}}>{matchRoom.opponent}</span></div>
+          <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:16}}>Playing: {matchRoom.deckName||"Your deck"}</div>
+          <div style={{fontSize:13,color:T.textMuted,fontFamily:F.body,marginBottom:12}}>How did it go?</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button onClick={()=>logMatchResult("W")} style={{flex:1,padding:16,borderRadius:8,border:`2px solid ${T.green}`,background:`${T.green}15`,color:T.green,fontSize:18,fontWeight:900,cursor:"pointer",fontFamily:F.heading,maxWidth:140}}>VICTORY</button>
+            <button onClick={()=>logMatchResult("L")} style={{flex:1,padding:16,borderRadius:8,border:`2px solid ${T.red}`,background:`${T.red}15`,color:T.red,fontSize:18,fontWeight:900,cursor:"pointer",fontFamily:F.heading,maxWidth:140}}>DEFEAT</button>
+          </div>
+        </div>
+      </>}
+      <button onClick={()=>setMatchRoom(null)} style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body,textDecoration:"underline"}}>Cancel</button>
+    </div>}
+
+    {/* Quick Log Game form */}
+    {showLogGame&&!matchRoom&&<div style={{background:T.card,borderRadius:8,border:`1px solid ${T.gold}33`,padding:14,marginBottom:12,boxShadow:S.cardFrame}}>
+      <div style={{fontSize:13,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:10}}>Quick Log (no room needed)</div>
       <select value={logDeck} onChange={e=>setLogDeck(e.target.value)} style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,marginBottom:8,boxSizing:"border-box"}}>
         <option value="">Select your deck...</option>
         {(decks||[]).map(d=><option key={d.id} value={d.id}>{d.name} ({d.format})</option>)}
       </select>
       <div style={{display:"flex",gap:6,marginBottom:8}}>
         <div style={{flex:1,position:"relative"}}>
-          <input value={logOpp} onChange={e=>setLogOpp(e.target.value)} placeholder="Opponent name or @username..." onKeyDown={e=>e.key==="Enter"&&logGame()} list="opp-names" style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxShadow:S.insetInput,boxSizing:"border-box"}}/>
+          <input value={logOpp} onChange={e=>setLogOpp(e.target.value)} placeholder="Opponent name..." onKeyDown={e=>e.key==="Enter"&&logGame()} list="opp-names" style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxShadow:S.insetInput,boxSizing:"border-box"}}/>
           <datalist id="opp-names">{oppNames.map(n=><option key={n} value={n}/>)}</datalist>
         </div>
         <button onClick={()=>setLogResult(logResult==="W"?"L":"W")} style={{padding:"8px 14px",borderRadius:4,border:`1.5px solid ${logResult==="W"?T.green:T.red}`,background:`${logResult==="W"?T.green:T.red}15`,color:logResult==="W"?T.green:T.red,fontSize:13,fontWeight:800,cursor:"pointer",fontFamily:F.heading,minWidth:50}}>{logResult==="W"?"WIN":"LOSS"}</button>
@@ -2825,11 +2930,12 @@ function RivalsTracker({decks,setDecks,toast}) {
       <button onClick={logGame} disabled={!logDeck||!logOpp.trim()} style={{width:"100%",padding:10,borderRadius:4,border:"none",background:logDeck&&logOpp.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:logDeck&&logOpp.trim()?"#000":"#666",fontSize:12,fontWeight:700,cursor:logDeck&&logOpp.trim()?"pointer":"default",fontFamily:F.body}}>Log Result</button>
     </div>}
 
-    {/* Tabs: Rivals / History */}
-    {totalGames>0&&<div style={{display:"flex",gap:0,marginBottom:10,borderRadius:4,overflow:"hidden",border:`1px solid ${T.cardBorder}`}}>
-      <button onClick={()=>setView("rivals")} style={{flex:1,padding:"8px 0",background:view==="rivals"?T.goldGlow:"transparent",border:"none",color:view==="rivals"?T.gold:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Rivals ({rivals.length})</button>
-      <button onClick={()=>setView("history")} style={{flex:1,padding:"8px 0",background:view==="history"?T.goldGlow:"transparent",border:"none",borderLeft:`1px solid ${T.cardBorder}`,color:view==="history"?T.gold:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Match History ({totalGames})</button>
-    </div>}
+    {/* Tabs: Rivals / History / Profile */}
+    <div style={{display:"flex",gap:0,marginBottom:10,borderRadius:4,overflow:"hidden",border:`1px solid ${T.cardBorder}`}}>
+      <button onClick={()=>setView("rivals")} style={{flex:1,padding:"8px 0",background:view==="rivals"?T.goldGlow:"transparent",border:"none",color:view==="rivals"?T.gold:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Rivals{rivals.length?` (${rivals.length})`:""}</button>
+      <button onClick={()=>setView("history")} style={{flex:1,padding:"8px 0",background:view==="history"?T.goldGlow:"transparent",border:"none",borderLeft:`1px solid ${T.cardBorder}`,color:view==="history"?T.gold:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>History{totalGames?` (${totalGames})`:""}</button>
+      <button onClick={()=>setView("profile")} style={{flex:1,padding:"8px 0",background:view==="profile"?T.goldGlow:"transparent",border:"none",borderLeft:`1px solid ${T.cardBorder}`,color:view==="profile"?T.gold:T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Profile</button>
+    </div>
 
     {totalGames===0&&!showLogGame&&<div style={{textAlign:"center",padding:"20px 0",color:T.textDim,fontSize:12,fontFamily:F.body}}>
       No games logged yet. Tap "+ Log Game" to record your first match!
@@ -2893,5 +2999,87 @@ function RivalsTracker({decks,setDecks,toast}) {
         {filteredHistory.length===0&&<div style={{textAlign:"center",padding:16,color:T.textDim,fontSize:12,fontFamily:F.body}}>No matches found</div>}
       </div>
     </>}
+
+    {/* Profile view */}
+    {view==="profile"&&<div>
+      <div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:16,marginBottom:12,boxShadow:S.cardFrame,textAlign:"center"}}>
+        {/* Avatar */}
+        <div style={{position:"relative",display:"inline-block",marginBottom:10}}>
+          <div style={{width:72,height:72,borderRadius:36,background:profile.avatar?`url(${profile.avatar}) center/cover`:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,fontWeight:900,color:"#000",fontFamily:F.heading,border:`3px solid ${T.gold}`,overflow:"hidden"}}>
+            {!profile.avatar&&(displayName[0]||"?").toUpperCase()}
+          </div>
+          {editingProfile&&<label style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:12,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:12}}>
+            {"\u270E"}
+            <input type="url" style={{display:"none"}} onChange={e=>{if(e.target.value)setProfile(p=>({...p,avatar:e.target.value}))}}/>
+          </label>}
+        </div>
+        <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{displayName}</div>
+        {user&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginTop:2}}>{user.email}</div>}
+        {!user&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginTop:2}}>Local player (sign in to sync)</div>}
+
+        {/* Stats summary */}
+        <div style={{display:"flex",justifyContent:"center",gap:20,marginTop:12,marginBottom:12}}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:T.green,fontFamily:F.heading}}>{totalWins}</div>
+            <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Wins</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:T.red,fontFamily:F.heading}}>{totalGames-totalWins}</div>
+            <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Losses</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:T.accent,fontFamily:F.heading}}>{totalGames?Math.round(totalWins/totalGames*100):0}%</div>
+            <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Win Rate</div>
+          </div>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:20,fontWeight:800,color:T.purple,fontFamily:F.heading}}>{rivals.length}</div>
+            <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Rivals</div>
+          </div>
+        </div>
+
+        {/* Bio */}
+        {editingProfile?<>
+          <div style={{textAlign:"left",marginBottom:6}}>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Avatar URL (paste image link)</div>
+            <input value={profile.avatar} onChange={e=>setProfile(p=>({...p,avatar:e.target.value}))} placeholder="https://..." style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxSizing:"border-box",marginBottom:8}}/>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Bio</div>
+            <textarea value={profile.bio} onChange={e=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Tell your rivals about yourself..." maxLength={200} style={{width:"100%",height:60,padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxSizing:"border-box",resize:"none"}}/>
+            <div style={{fontSize:10,color:T.textDim,textAlign:"right",fontFamily:F.body}}>{(profile.bio||"").length}/200</div>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4,marginTop:4}}>Favorite color</div>
+            <div style={{display:"flex",gap:6,marginBottom:10}}>
+              {Object.entries(COLOR_NAMES).map(([k,v])=>
+                <button key={k} onClick={()=>setProfile(p=>({...p,favoriteColor:k}))} style={{width:32,height:32,borderRadius:16,background:MCLR[k],border:profile.favoriteColor===k?`3px solid ${T.gold}`:"2px solid #333",cursor:"pointer",opacity:profile.favoriteColor===k?1:.5}} title={v}/>
+              )}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={saveProfile} style={{flex:1,padding:10,borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Save Profile</button>
+            <button onClick={()=>setEditingProfile(false)} style={{padding:"10px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",fontFamily:F.body}}>Cancel</button>
+          </div>
+        </>:<>
+          {profile.bio&&<div style={{fontSize:12,color:T.textMuted,fontFamily:F.body,lineHeight:1.5,marginBottom:8,fontStyle:"italic"}}>"{profile.bio}"</div>}
+          {profile.favoriteColor&&<div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginBottom:8}}>
+            <div style={{width:12,height:12,borderRadius:6,background:MCLR[profile.favoriteColor]}}/>
+            <span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{COLOR_NAMES[profile.favoriteColor]} mage</span>
+          </div>}
+          <button onClick={()=>setEditingProfile(true)} style={{padding:"8px 20px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textMuted,fontSize:11,cursor:"pointer",fontFamily:F.body}}>Edit Profile</button>
+        </>}
+      </div>
+
+      {/* Top Rival */}
+      {rivals.length>0&&<div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:12,boxShadow:S.cardFrame}}>
+        <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:6}}>Top Rival</div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:32,height:32,borderRadius:16,background:`linear-gradient(135deg,${T.purple}44,${T.cardInner})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:800,color:T.purple,fontFamily:F.heading,border:`1.5px solid ${T.purple}44`}}>{rivals[0].name[0].toUpperCase()}</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.text,fontFamily:F.heading}}>{rivals[0].name}</div>
+            <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{rivals[0].games} games played</div>
+          </div>
+          <div style={{fontSize:16,fontWeight:800,fontFamily:F.heading}}>
+            <span style={{color:T.green}}>{rivals[0].wins}</span><span style={{color:T.textDim}}>-</span><span style={{color:T.red}}>{rivals[0].losses}</span>
+          </div>
+        </div>
+      </div>}
+    </div>}
   </div>;
 }
