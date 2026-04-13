@@ -956,7 +956,7 @@ export default function App() {
   const [ready,setReady]=useState(false);
   const {toasts,show:toast}=useToast();
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
-  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [isOffline,setIsOffline]=useState(!navigator.onLine);
   const [user,setUser]=useState(null);
@@ -1192,7 +1192,10 @@ export default function App() {
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:10,borderTop:`1px solid ${T.cardBorder}`}}>
         <span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Arcane Vault v{APP_VERSION}</span>
-        <button onClick={()=>setShowChangelog(true)} style={{fontSize:11,color:T.gold,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>What's New</button>
+        <div style={{display:"flex",gap:12}}>
+          <button onClick={()=>setShowFaq(true)} style={{fontSize:11,color:T.textMuted,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>FAQ</button>
+          <button onClick={()=>setShowChangelog(true)} style={{fontSize:11,color:T.gold,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>What's New</button>
+        </div>
       </div>
     </div>}
 
@@ -1218,6 +1221,46 @@ export default function App() {
                 <span style={{color:T.gold,flexShrink:0,fontSize:11,marginTop:1}}>+</span>
                 <span style={{fontSize:12,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{c}</span>
               </div>)}
+            </div>
+          </div>)}
+        </div>
+      </div>
+    </div>}
+
+    {/* FAQ overlay */}
+    {showFaq&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column",alignItems:"center",overscrollBehavior:"contain"}} onClick={()=>setShowFaq(false)}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,width:"100%",maxWidth:480,flex:1,overflow:"auto",padding:"0 0 env(safe-area-inset-bottom,16px)"}}>
+        <div style={{position:"sticky",top:0,background:T.surface,padding:"16px 18px 12px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:1}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>FAQ</div>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Frequently Asked Questions</div>
+          </div>
+          <button onClick={()=>setShowFaq(false)} style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.close(T.textMuted)}</button>
+        </div>
+        <div style={{padding:"8px 18px 24px"}}>
+          {[
+            {q:"What is Arcane Vault?",a:"Arcane Vault is a free companion app for Magic: The Gathering. Search any card ever printed, build decks, manage your collection, track card values, and evaluate trades \u2014 all in one place."},
+            {q:"Do I need an account?",a:"No! The app works fully offline with local storage. Create an account to sync your data across devices, share decks, and track price history. Your data is always saved locally as a backup."},
+            {q:"How do I add cards to my collection?",a:"Go to the Search tab, find a card, tap it to open the detail view, then tap '+ Collection'. The card is added to your active binder. You can also import cards via CSV in the Binder view."},
+            {q:"How do I build a deck?",a:"Go to Vault \u2192 Decks \u2192 tap '+ New Deck'. Give it a name and choose a format. In the deck editor, use the search bar to find cards and tap 'Main' or 'Side' to add them."},
+            {q:"What are the color symbols (W, U, B, R, G)?",a:"These are Magic's five colors: W = White, U = Blue (U because B is taken by Black), B = Black, R = Red, G = Green. Tap them to filter search results by color identity."},
+            {q:"What is a format?",a:"Formats are different ways to play Magic with specific rules. Standard uses recent cards (60-card decks). Commander is a popular 100-card singleton format. Limited is for draft/sealed (40-card minimum). Each format has its own deck size and card limits."},
+            {q:"How does the card scanner work?",a:"Tap the 'Scan' button (camera icon) on the Search tab. Take a photo of a physical card and the app uses OCR to identify it. Works best with good lighting and a clear, flat card."},
+            {q:"What is the Playtest feature?",a:"Open a deck and tap 'Playtest' to simulate drawing an opening hand. You can mulligan (London mulligan rules \u2014 draw 7, put cards back), draw for turn, and test how the deck feels."},
+            {q:"How are card prices determined?",a:"Prices come from Scryfall, which aggregates data from TCGPlayer (USD) and Cardmarket (EUR). Prices update when you search for a card. You can switch between USD and EUR in Settings."},
+            {q:"Can I share my decks?",a:"Yes! Sign in to your account, open a deck, and tap 'Share'. This generates a unique link anyone can use to view your decklist. Tap again to unshare."},
+            {q:"What does the life counter track?",a:"The life counter on the Trade tab tracks life totals, commander damage, poison counters, energy, and monarch status. It supports 2-4 player games and adjusts starting life based on format."},
+            {q:"How do I import/export decklists?",a:"In the deck editor, tap 'Import' and paste a decklist (one card per line, e.g. '4 Lightning Bolt'). It supports both text and Arena formats. Tap 'Export' to copy the decklist to your clipboard."},
+            {q:"My data disappeared after signing out!",a:"Signing out clears your in-app data for privacy. Sign back in to reload your cloud data. Your local data is also preserved in your browser's storage as a backup."},
+            {q:"Does the app work offline?",a:"Yes! Search results and card data are cached locally. Your collection and decks are saved to your browser's storage. When you're back online, any changes sync automatically to the cloud."},
+            {q:"How do I track card value over time?",a:"In the card detail view, tap 'Watch Price' to add a card to your price watchlist. The app records price snapshots so you can see trends over time via the sparkline chart."},
+          ].map((item,i)=><div key={i} style={{marginBottom:12}}>
+            <div style={{fontSize:13,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,display:"flex",gap:8,alignItems:"flex-start"}}>
+              <span style={{color:T.gold,flexShrink:0,fontSize:14}}>Q.</span>
+              <span>{item.q}</span>
+            </div>
+            <div style={{fontSize:12,color:T.text,lineHeight:1.6,fontFamily:F.body,paddingLeft:22,paddingBottom:12,borderBottom:`1px solid ${T.cardBorder}`}}>
+              {item.a}
             </div>
           </div>)}
         </div>
