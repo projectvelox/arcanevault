@@ -941,6 +941,119 @@ const CONDITIONS = ["NM","LP","MP","HP","DMG"];
 const LANGUAGES = ["en","ja","de","fr","it","es","pt","ko","zhs","zht","ru"];
 const LANG_LABELS = {en:"English",ja:"Japanese",de:"German",fr:"French",it:"Italian",es:"Spanish",pt:"Portuguese",ko:"Korean",zhs:"S. Chinese",zht:"T. Chinese",ru:"Russian"};
 
+function FaqAccordion({items}) {
+  const [open,setOpen]=useState(null);
+  return <div>{items.map((item,i)=><div key={i} style={{marginBottom:2}}>
+    <button onClick={()=>setOpen(open===i?null:i)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:open===i?T.cardInner:T.card,border:`1px solid ${open===i?T.gold+"44":T.cardBorder}`,borderRadius:open===i?"8px 8px 0 0":8,cursor:"pointer",textAlign:"left",transition:"all .15s"}}>
+      <span style={{fontSize:16,flexShrink:0}}>{item.icon}</span>
+      <span style={{flex:1,fontSize:13,fontWeight:600,color:T.text,fontFamily:F.body}}>{item.q}</span>
+      <span style={{fontSize:14,color:T.textDim,transform:open===i?"rotate(180deg)":"rotate(0)",transition:"transform .2s"}}>{"\u25BE"}</span>
+    </button>
+    {open===i&&<div style={{padding:"12px 14px 14px",paddingLeft:40,background:T.cardInner,borderRadius:"0 0 8px 8px",border:`1px solid ${T.gold}44`,borderTop:"none",fontSize:12,color:T.textMuted,lineHeight:1.7,fontFamily:F.body}}>
+      {item.a}
+      {item.steps&&<div style={{marginTop:8}}>{item.steps.map((s,j)=><div key={j} style={{display:"flex",gap:8,marginBottom:4}}>
+        <span style={{color:T.gold,fontWeight:700,flexShrink:0}}>{j+1}.</span>
+        <span>{s}</span>
+      </div>)}</div>}
+    </div>}
+  </div>)}</div>;
+}
+
+function AboutPage({onClose,defaultTab="guide",onCloseExtra}) {
+  const [tab,setTab]=useState(defaultTab);
+  useEffect(()=>{document.body.style.overflow="hidden";return()=>{document.body.style.overflow=""}},[]);
+
+  const guideSections=[
+    {title:"Getting Started",icon:"\u2728",items:[
+      {icon:"\uD83D\uDD0D",q:"How do I find cards?",a:"Use the Search tab to look up any Magic card by name.",steps:["Tap the Search tab at the bottom","Type a card name (e.g. 'lightning bolt')","Tap any card to see full details, prices, and rulings"]},
+      {icon:"\uD83D\uDCF7",q:"How do I scan a physical card?",a:"Use the camera scanner to identify cards from photos.",steps:["Tap the 'Scan' button (camera icon) on Search","Take a photo of your card with good lighting","The app identifies it automatically via OCR"]},
+      {icon:"\uD83C\uDFA8",q:"What do the color circles mean?",a:"Magic has 5 colors. Each has a letter: W = White, U = Blue (U because B is Black), B = Black, R = Red, G = Green. Tap them to filter cards by color."},
+    ]},
+    {title:"Building Your Collection",icon:"\uD83D\uDCDA",items:[
+      {icon:"\u2795",q:"How do I add cards to my collection?",a:"Find a card in Search, tap it, then tap '+ Collection'. Done!",steps:["Search for a card","Tap the card to open details","Tap '+ Collection' to add it to your active binder","Use +/- buttons in your Binder to adjust quantities"]},
+      {icon:"\uD83D\uDCC2",q:"What are Binders?",a:"Binders are folders for organizing your cards. You start with 'Collection' and 'Wishlist', and can create more. Think of them like real binders on a shelf."},
+      {icon:"\uD83D\uDCE5",q:"Can I import my collection?",a:"Yes! In the Binder view, tap the CSV import button and paste your collection data. It supports standard CSV format with card names, quantities, and conditions."},
+    ]},
+    {title:"Deck Building",icon:"\u2694\uFE0F",items:[
+      {icon:"\uD83C\uDCCF",q:"How do I build a deck?",a:"Create a new deck and start adding cards.",steps:["Go to Vault \u2192 Decks tab","Tap '+ New Deck' and give it a name","Choose a format (Standard = 60 cards is a good start)","Use the search bar in the editor to find and add cards"]},
+      {icon:"\uD83C\uDFAF",q:"What are formats?",a:"Formats are different ways to play Magic with specific rules. Standard = recent cards, 60-card minimum. Commander = 100 cards, no duplicates, very popular. Limited = 40 cards from draft/sealed packs."},
+      {icon:"\uD83E\uDDE0",q:"What does Playtest do?",a:"Simulates drawing an opening hand from your deck. You can mulligan (redraw), draw cards, and see if your deck flows well before playing for real."},
+      {icon:"\uD83D\uDCCB",q:"How do I import a decklist?",a:"In the deck editor, tap 'Import' and paste your list. Format: one card per line, like '4 Lightning Bolt'. Supports Arena format too."},
+    ]},
+    {title:"Trading & Prices",icon:"\uD83D\uDCB0",items:[
+      {icon:"\u2696\uFE0F",q:"How does the trade evaluator work?",a:"Add cards to both sides of a trade to compare total values. The balance bar shows if the trade is fair or lopsided.",steps:["Go to the Trade tab","Tap '+ Add card' on each side","Adjust quantities as needed","The balance indicator shows the value difference"]},
+      {icon:"\uD83D\uDCC8",q:"Where do card prices come from?",a:"Prices come from Scryfall, which aggregates TCGPlayer (USD) and Cardmarket (EUR). Switch currency in Settings. Tap 'Watch Price' on any card to track it over time."},
+    ]},
+    {title:"Account & Data",icon:"\uD83D\uDD12",items:[
+      {icon:"\u2601\uFE0F",q:"Do I need an account?",a:"No! Everything works offline. An account adds cloud sync, deck sharing, and price watchlists. Your data is always backed up locally."},
+      {icon:"\uD83D\uDCF4",q:"Does it work offline?",a:"Yes! Cards you've searched are cached. Your collection and decks save to your browser. When back online, everything syncs to the cloud."},
+      {icon:"\uD83D\uDD17",q:"Can I share my decks?",a:"Sign in, open a deck, and tap 'Share' to generate a link anyone can view. Tap again to unshare."},
+    ]},
+  ];
+
+  return <div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column",alignItems:"center",overscrollBehavior:"contain"}} onClick={()=>{onClose();onCloseExtra?.()}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,width:"100%",maxWidth:480,flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
+      <div style={{position:"sticky",top:0,background:T.surface,zIndex:1,flexShrink:0}}>
+        <div style={{padding:"16px 18px 10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:32,height:32,borderRadius:8,background:`linear-gradient(135deg, ${T.gold}, ${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:S.goldGlow}}>
+              {I.sparkle("#0C0E14")}
+            </div>
+            <div>
+              <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Arcane Vault</div>
+              <div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>v{APP_VERSION} \u2022 Your MTG Companion</div>
+            </div>
+          </div>
+          <button onClick={()=>{onClose();onCloseExtra?.()}} style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.close(T.textMuted)}</button>
+        </div>
+        <div style={{display:"flex",gap:0,padding:"0 18px",borderBottom:`1px solid ${T.cardBorder}`}}>
+          {[["guide","Guide"],["faq","FAQ"],["changelog","What's New"]].map(([id,label])=>
+            <button key={id} onClick={()=>setTab(id)} style={{flex:1,padding:"10px 0",background:"none",border:"none",borderBottom:tab===id?`2px solid ${T.gold}`:"2px solid transparent",color:tab===id?T.gold:T.textDim,fontSize:12,fontWeight:tab===id?700:500,cursor:"pointer",fontFamily:F.body,transition:"all .15s"}}>{label}</button>
+          )}
+        </div>
+      </div>
+      <div style={{flex:1,overflow:"auto",padding:"12px 18px 24px"}}>
+        {tab==="guide"&&<div>
+          {guideSections.map(section=><div key={section.title} style={{marginBottom:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:18}}>{section.icon}</span>
+              <span style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{section.title}</span>
+            </div>
+            <FaqAccordion items={section.items}/>
+          </div>)}
+        </div>}
+        {tab==="faq"&&<div>
+          <FaqAccordion items={[
+            {icon:"\uD83E\uDD14",q:"What is Magic: The Gathering?",a:"A strategy card game where you build a deck of cards and battle opponents. Each card represents a spell, creature, or resource. It's been around since 1993 and has over 25,000 unique cards."},
+            {icon:"\uD83C\uDFF7\uFE0F",q:"Are the prices accurate?",a:"Prices come from Scryfall (aggregating TCGPlayer and Cardmarket). They're market averages and may differ from what you see at your local store. Prices update each time you view a card."},
+            {icon:"\uD83D\uDCF1",q:"Can I install this as an app?",a:"Yes! On iOS Safari, tap Share \u2192 'Add to Home Screen'. On Android Chrome, tap the menu \u2192 'Install app'. This gives you a full-screen app icon with offline support."},
+            {icon:"\uD83D\uDD04",q:"My data disappeared after signing out!",a:"Signing out clears in-app data for privacy (in case someone else uses your device). Sign back in to reload from the cloud. A local backup is always kept in your browser."},
+            {icon:"\uD83D\uDC1B",q:"I found a bug! How do I report it?",a:"We appreciate bug reports! Please describe what happened, what you expected, and what device/browser you're using. Report via the app's feedback channel."},
+            {icon:"\u26A1",q:"Why is search slow sometimes?",a:"Card data comes from Scryfall's free API, which has rate limits. If you're searching rapidly, the app may need to wait briefly between requests. Cached results load instantly."},
+            {icon:"\uD83C\uDF0D",q:"Can I use EUR prices instead of USD?",a:"Yes! Open Settings (gear icon in the header) and change Currency to EUR. All prices throughout the app will update."},
+            {icon:"\uD83D\uDCBE",q:"How much storage does this use?",a:"Your browser typically allows 50-100MB. A large collection (8000+ cards) uses roughly 10-20MB. The app warns you if storage is getting full."},
+          ]}/>
+        </div>}
+        {tab==="changelog"&&<div>
+          {CHANGELOG.map(release=><div key={release.version} style={{marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:6}}>
+              <span style={{fontSize:15,fontWeight:800,color:T.gold,fontFamily:F.heading}}>v{release.version}</span>
+              <span style={{fontSize:12,fontWeight:600,color:T.accent,fontFamily:F.heading}}>{release.title}</span>
+              <span style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginLeft:"auto"}}>{release.date}</span>
+            </div>
+            <div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:"10px 14px",boxShadow:S.cardFrame}}>
+              {release.changes.map((c,i)=><div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:i<release.changes.length-1?`1px solid ${T.cardBorder}`:"none"}}>
+                <span style={{color:T.gold,flexShrink:0,fontSize:11,marginTop:1}}>+</span>
+                <span style={{fontSize:12,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{c}</span>
+              </div>)}
+            </div>
+          </div>)}
+        </div>}
+      </div>
+    </div>
+  </div>;
+}
+
 export default function App() {
   const [tab,setTab]=useState("search");
   const [sharedDeck,setSharedDeck]=useState(null);
@@ -956,7 +1069,9 @@ export default function App() {
   const [ready,setReady]=useState(false);
   const {toasts,show:toast}=useToast();
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
-  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);const [showAbout,setShowAbout]=useState(false);
+  const [isNewVersion,setIsNewVersion]=useState(false);
+  useEffect(()=>{store.get("av-last-version").then(v=>{if(v!==APP_VERSION){setIsNewVersion(true);store.set("av-last-version",APP_VERSION)}})},[]);
   const [showOnboarding,setShowOnboarding]=useState(false);
   const [isOffline,setIsOffline]=useState(!navigator.onLine);
   const [user,setUser]=useState(null);
@@ -1160,7 +1275,13 @@ export default function App() {
         {I.sparkle("#0C0E14")}
       </div>
       <div style={{flex:1}}>
-        <div style={{fontSize:FS.h1,fontWeight:700,color:T.accent,lineHeight:LH.h1,fontFamily:F.heading,letterSpacing:1.2,textTransform:"uppercase"}}>{hdr[tab][0]}</div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{fontSize:FS.h1,fontWeight:700,color:T.accent,lineHeight:LH.h1,fontFamily:F.heading,letterSpacing:1.2,textTransform:"uppercase"}}>{hdr[tab][0]}</div>
+          <button onClick={()=>setShowAbout(true)} style={{background:isNewVersion?T.goldGlow:T.cardInner,border:`1px solid ${isNewVersion?T.gold:T.cardBorder}`,borderRadius:4,padding:"1px 5px",cursor:"pointer",position:"relative"}}>
+            <span style={{fontSize:9,fontWeight:700,color:isNewVersion?T.gold:T.textDim,fontFamily:F.body}}>v{APP_VERSION}</span>
+            {isNewVersion&&<div style={{position:"absolute",top:-2,right:-2,width:6,height:6,borderRadius:3,background:T.gold,boxShadow:`0 0 6px ${T.gold}`}}/>}
+          </button>
+        </div>
         <div style={{fontSize:10,fontWeight:600,letterSpacing:2,color:T.textDim,textTransform:"uppercase",marginTop:1,fontFamily:F.body}}>{hdr[tab][1]}</div>
       </div>
       <button onClick={()=>setShowSettings(!showSettings)} aria-label="Settings" style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
@@ -1193,79 +1314,14 @@ export default function App() {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10,paddingTop:10,borderTop:`1px solid ${T.cardBorder}`}}>
         <span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Arcane Vault v{APP_VERSION}</span>
         <div style={{display:"flex",gap:12}}>
-          <button onClick={()=>setShowFaq(true)} style={{fontSize:11,color:T.textMuted,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>FAQ</button>
-          <button onClick={()=>setShowChangelog(true)} style={{fontSize:11,color:T.gold,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>What's New</button>
+          <button onClick={()=>{setShowFaq(true);setShowAbout(true)}} style={{fontSize:11,color:T.textMuted,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>FAQ</button>
+          <button onClick={()=>{setShowChangelog(true);setShowAbout(true)}} style={{fontSize:11,color:T.gold,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,textDecoration:"underline",padding:0}}>What's New</button>
         </div>
       </div>
     </div>}
 
-    {/* Changelog overlay */}
-    {showChangelog&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column",alignItems:"center",padding:"0",overscrollBehavior:"contain"}} onClick={()=>setShowChangelog(false)}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,width:"100%",maxWidth:480,flex:1,overflow:"auto",padding:"0 0 env(safe-area-inset-bottom,16px)"}}>
-        <div style={{position:"sticky",top:0,background:T.surface,padding:"16px 18px 12px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:1}}>
-          <div>
-            <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>What's New</div>
-            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Version History & Changelog</div>
-          </div>
-          <button onClick={()=>setShowChangelog(false)} style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.close(T.textMuted)}</button>
-        </div>
-        <div style={{padding:"8px 18px 24px"}}>
-          {CHANGELOG.map(release=><div key={release.version} style={{marginBottom:20}}>
-            <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:6}}>
-              <span style={{fontSize:15,fontWeight:800,color:T.gold,fontFamily:F.heading}}>v{release.version}</span>
-              <span style={{fontSize:12,fontWeight:600,color:T.accent,fontFamily:F.heading}}>{release.title}</span>
-              <span style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginLeft:"auto"}}>{release.date}</span>
-            </div>
-            <div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:"10px 14px",boxShadow:S.cardFrame}}>
-              {release.changes.map((c,i)=><div key={i} style={{display:"flex",gap:8,padding:"5px 0",borderBottom:i<release.changes.length-1?`1px solid ${T.cardBorder}`:"none"}}>
-                <span style={{color:T.gold,flexShrink:0,fontSize:11,marginTop:1}}>+</span>
-                <span style={{fontSize:12,color:T.text,lineHeight:1.5,fontFamily:F.body}}>{c}</span>
-              </div>)}
-            </div>
-          </div>)}
-        </div>
-      </div>
-    </div>}
-
-    {/* FAQ overlay */}
-    {showFaq&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.92)",display:"flex",flexDirection:"column",alignItems:"center",overscrollBehavior:"contain"}} onClick={()=>setShowFaq(false)}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,width:"100%",maxWidth:480,flex:1,overflow:"auto",padding:"0 0 env(safe-area-inset-bottom,16px)"}}>
-        <div style={{position:"sticky",top:0,background:T.surface,padding:"16px 18px 12px",borderBottom:`1px solid ${T.cardBorder}`,display:"flex",justifyContent:"space-between",alignItems:"center",zIndex:1}}>
-          <div>
-            <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>FAQ</div>
-            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>Frequently Asked Questions</div>
-          </div>
-          <button onClick={()=>setShowFaq(false)} style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.close(T.textMuted)}</button>
-        </div>
-        <div style={{padding:"8px 18px 24px"}}>
-          {[
-            {q:"What is Arcane Vault?",a:"Arcane Vault is a free companion app for Magic: The Gathering. Search any card ever printed, build decks, manage your collection, track card values, and evaluate trades \u2014 all in one place."},
-            {q:"Do I need an account?",a:"No! The app works fully offline with local storage. Create an account to sync your data across devices, share decks, and track price history. Your data is always saved locally as a backup."},
-            {q:"How do I add cards to my collection?",a:"Go to the Search tab, find a card, tap it to open the detail view, then tap '+ Collection'. The card is added to your active binder. You can also import cards via CSV in the Binder view."},
-            {q:"How do I build a deck?",a:"Go to Vault \u2192 Decks \u2192 tap '+ New Deck'. Give it a name and choose a format. In the deck editor, use the search bar to find cards and tap 'Main' or 'Side' to add them."},
-            {q:"What are the color symbols (W, U, B, R, G)?",a:"These are Magic's five colors: W = White, U = Blue (U because B is taken by Black), B = Black, R = Red, G = Green. Tap them to filter search results by color identity."},
-            {q:"What is a format?",a:"Formats are different ways to play Magic with specific rules. Standard uses recent cards (60-card decks). Commander is a popular 100-card singleton format. Limited is for draft/sealed (40-card minimum). Each format has its own deck size and card limits."},
-            {q:"How does the card scanner work?",a:"Tap the 'Scan' button (camera icon) on the Search tab. Take a photo of a physical card and the app uses OCR to identify it. Works best with good lighting and a clear, flat card."},
-            {q:"What is the Playtest feature?",a:"Open a deck and tap 'Playtest' to simulate drawing an opening hand. You can mulligan (London mulligan rules \u2014 draw 7, put cards back), draw for turn, and test how the deck feels."},
-            {q:"How are card prices determined?",a:"Prices come from Scryfall, which aggregates data from TCGPlayer (USD) and Cardmarket (EUR). Prices update when you search for a card. You can switch between USD and EUR in Settings."},
-            {q:"Can I share my decks?",a:"Yes! Sign in to your account, open a deck, and tap 'Share'. This generates a unique link anyone can use to view your decklist. Tap again to unshare."},
-            {q:"What does the life counter track?",a:"The life counter on the Trade tab tracks life totals, commander damage, poison counters, energy, and monarch status. It supports 2-4 player games and adjusts starting life based on format."},
-            {q:"How do I import/export decklists?",a:"In the deck editor, tap 'Import' and paste a decklist (one card per line, e.g. '4 Lightning Bolt'). It supports both text and Arena formats. Tap 'Export' to copy the decklist to your clipboard."},
-            {q:"My data disappeared after signing out!",a:"Signing out clears your in-app data for privacy. Sign back in to reload your cloud data. Your local data is also preserved in your browser's storage as a backup."},
-            {q:"Does the app work offline?",a:"Yes! Search results and card data are cached locally. Your collection and decks are saved to your browser's storage. When you're back online, any changes sync automatically to the cloud."},
-            {q:"How do I track card value over time?",a:"In the card detail view, tap 'Watch Price' to add a card to your price watchlist. The app records price snapshots so you can see trends over time via the sparkline chart."},
-          ].map((item,i)=><div key={i} style={{marginBottom:12}}>
-            <div style={{fontSize:13,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4,display:"flex",gap:8,alignItems:"flex-start"}}>
-              <span style={{color:T.gold,flexShrink:0,fontSize:14}}>Q.</span>
-              <span>{item.q}</span>
-            </div>
-            <div style={{fontSize:12,color:T.text,lineHeight:1.6,fontFamily:F.body,paddingLeft:22,paddingBottom:12,borderBottom:`1px solid ${T.cardBorder}`}}>
-              {item.a}
-            </div>
-          </div>)}
-        </div>
-      </div>
-    </div>}
+    {/* About / FAQ / Changelog unified overlay */}
+    {showAbout&&<AboutPage onClose={()=>{setShowAbout(false);setIsNewVersion(false)}} defaultTab={showChangelog?"changelog":showFaq?"faq":"guide"} onCloseExtra={()=>{setShowChangelog(false);setShowFaq(false)}}/>}
 
     {/* Auth modal */}
     {authMode&&<div style={{position:"fixed",inset:0,zIndex:500,background:"rgba(0,0,0,.9)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32}} onClick={()=>setAuthMode(null)}>
