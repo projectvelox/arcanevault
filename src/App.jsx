@@ -762,8 +762,13 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
   const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;
 
-  return <div style={{position:"fixed",inset:0,zIndex:300,background:"#000",display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
-    <ArtBg src={getImg(card)} opacity={.12} blur={40} gradient={false}/>
+  const [imgLoaded,setImgLoaded]=useState(false);
+  const [imgError,setImgError]=useState(false);
+  useEffect(()=>{setImgLoaded(false);setImgError(false);setFlipped(false)},[index]);
+  const cardImgSrc=flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card);
+
+  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+    <ArtBg src={getImg(card)} opacity={.25} blur={40} gradient={false}/>
     <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
       <button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:14,cursor:"pointer",padding:8,display:"flex",alignItems:"center",gap:6,fontFamily:F.body}}>{I.close(T.textMuted)} Close</button>
@@ -775,7 +780,9 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
     </div>
     <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"auto",padding:"0 16px"}}>
       <div style={{position:"relative",maxWidth:"85%"}}>
-        <img src={flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card)} alt={card.name} style={{width:"100%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)${flipped?" rotateY(180deg)":""}`,transition:dragging?"none":"transform .4s",pointerEvents:"none",objectFit:"contain"}}/>
+        {!imgLoaded&&!imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{width:32,height:32,border:`3px solid ${T.gold}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/></div>}
+        <img src={cardImgSrc} alt={card.name} onLoad={()=>setImgLoaded(true)} onError={()=>setImgError(true)} style={{width:"100%",maxHeight:"46vh",borderRadius:14,transform:`translateX(${dragX*.3}px) rotate(${dragX*.02}deg)${flipped?" rotateY(180deg)":""}`,transition:dragging?"none":"transform .4s",pointerEvents:"none",objectFit:"contain",opacity:imgLoaded?1:0}}/>
+        {imgError&&<div style={{width:"100%",height:"40vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8}}><span style={{fontSize:32}}>🃏</span><span style={{fontSize:13,color:T.textMuted,fontFamily:F.body}}>Image failed to load</span></div>}
         {card.card_faces?.length>1&&card.card_faces[1]?.image_uris&&<button onClick={()=>setFlipped(!flipped)} style={{position:"absolute",bottom:8,right:8,width:36,height:36,borderRadius:18,background:"rgba(0,0,0,.7)",border:`1.5px solid ${T.gold}`,color:T.gold,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}} title="Flip card">{"\u21BB"}</button>}
       </div>
       <div style={{marginTop:12,textAlign:"center",width:"100%",maxWidth:340}}>
