@@ -1899,6 +1899,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [mullPhase,setMullPhase]=useState(null);
   const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
   const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);const [importing,setImporting]=useState(false);
+  const [buildColors,setBuildColors]=useState([]);const [building,setBuilding]=useState(false);
   const notesTimer=useRef(null);
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
@@ -1955,6 +1956,67 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   };
   const updateNotes=(text)=>{setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
     if(isOnline.current){clearTimeout(notesTimer.current);notesTimer.current=setTimeout(()=>enqueueWrite(()=>decksApi.update(deckId,{notes:text})),800)}
+  };
+
+  const autoBuild=async()=>{
+    if(building)return;setBuilding(true);
+    const colors=buildColors.length?buildColors:["R","G"]; // default Gruul if none picked
+    const colorQ=`id<=${colors.join("").toLowerCase()}`;
+    const isCommander=deck.format==="commander"||deck.format==="brawl";
+    const targetMain=isCommander?99:36; // non-lands
+    const targetLands=isCommander?37:24;
+    const copies=isCommander?1:4;
+    try{
+      // Fetch creatures
+      await scryfallThrottle();
+      const cr=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:creature f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
+      const creatures=cr.ok?(await cr.json()).data||[]:[];
+      // Fetch non-creature spells
+      await scryfallThrottle();
+      const sp=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} (t:instant or t:sorcery or t:enchantment or t:artifact or t:planeswalker) f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
+      const spells=sp.ok?(await sp.json()).data||[]:[];
+      // Fetch lands
+      await scryfallThrottle();
+      const la=await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(`${colorQ} t:land ${colors.length>1?"-t:basic":"t:basic"} f:${deck.format==="limited"?"standard":deck.format}`)}&order=edhrec&unique=cards`);
+      const lands=la.ok?(await la.json()).data||[]:[];
+
+      const pick=(pool,count)=>{const picked=[];let i=0;while(picked.length<count&&i<pool.length){const c=pool[i];if(!isCommander||!picked.find(p=>p.id===c.id)){picked.push(c)}i++}return picked};
+
+      const creatureCount=Math.round(targetMain*0.6);
+      const spellCount=targetMain-creatureCount;
+      const pickedCreatures=pick(creatures,creatureCount);
+      const pickedSpells=pick(spells,spellCount);
+      const pickedLands=pick(lands,Math.min(targetLands-colors.length,lands.length));
+
+      // Build cards array
+      const deckCards=[];
+      [...pickedCreatures,...pickedSpells].forEach(c=>{deckCards.push({...c,qty:copies>1?Math.min(copies,isCommander?1:2):1,board:"main"})});
+      pickedLands.forEach(c=>{deckCards.push({...c,qty:isCommander?1:2,board:"main"})});
+
+      // Fill remaining lands with basics
+      const currentCount=deckCards.reduce((a,c)=>a+c.qty,0);
+      const targetTotal=isCommander?99:60;
+      const remaining=Math.max(0,targetTotal-currentCount);
+      if(remaining>0){
+        const basicNames={W:"Plains",U:"Island",B:"Swamp",R:"Mountain",G:"Forest"};
+        const basicsToUse=colors.map(c=>basicNames[c]).filter(Boolean);
+        if(basicsToUse.length){
+          const perBasic=Math.floor(remaining/basicsToUse.length);
+          const extra=remaining%basicsToUse.length;
+          for(let i=0;i<basicsToUse.length;i++){
+            await scryfallThrottle();
+            const br=await fetch(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(basicsToUse[i])}`);
+            if(br.ok){const bc=await br.json();deckCards.push({...bc,qty:perBasic+(i<extra?1:0),board:"main"})}
+          }
+        }
+      }
+
+      // Set all cards on the deck
+      setDecks(p=>p.map(d=>d.id!==deckId?d:{...d,cards:deckCards}));
+      toast(`Auto-built ${deckCards.reduce((a,c)=>a+c.qty,0)} cards!`);
+      if(isOnline.current)deckCards.forEach(c=>enqueueWrite(()=>deckCardsApi.add(deckId,c,c.board)));
+    }catch(e){toast("Failed to auto-build \u2014 check your connection","error")}
+    setBuilding(false);
   };
 
   const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
@@ -2173,10 +2235,21 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <button onClick={()=>setViewMode("list")} style={{flex:1,padding:8,borderRadius:4,border:"none",background:viewMode==="list"?T.gold:T.card,color:viewMode==="list"?"#000":T.textDim,fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>List</button>
     </div>
 
-    {/* Empty deck message */}
-    {deck.cards.length===0&&<div style={{textAlign:"center",padding:"40px 20px",color:T.textDim}}>
-      <div style={{fontSize:14,fontFamily:F.body,marginBottom:8}}>This deck is empty \u2014 search above to add your first card.</div>
-      <div style={{fontSize:13,fontStyle:"italic",color:T.textDim,fontFamily:F.body}}>"An empty page is the most dangerous weapon a mage can carry." \u2014 Teferi</div>
+    {/* Empty deck — auto-build or manual */}
+    {deck.cards.length===0&&<div style={{padding:"20px 16px",color:T.textDim}}>
+      <div style={{background:T.card,borderRadius:8,border:`1px solid ${T.cardBorder}`,padding:20,textAlign:"center",boxShadow:S.cardFrame,marginBottom:16}}>
+        <div style={{fontSize:24,marginBottom:6}}>{"\u2728"}</div>
+        <div style={{fontSize:15,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:4}}>Auto-Build a Deck</div>
+        <div style={{fontSize:12,color:T.textMuted,fontFamily:F.body,marginBottom:14,lineHeight:1.5}}>Pick your colors and we'll build a balanced {deck.format==="commander"?"100":"60"}-card deck using popular, proven cards.</div>
+        <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:14}}>
+          <ColorPills colors={buildColors} setColors={setBuildColors} size={38}/>
+        </div>
+        <div style={{fontSize:10,color:T.textDim,fontFamily:F.body,marginBottom:12}}>{buildColors.length===0?"Pick 1-3 colors (or leave empty for Red/Green)":buildColors.map(c=>COLOR_NAMES[c]).join(" + ")}</div>
+        <button onClick={autoBuild} disabled={building} style={{width:"100%",padding:14,borderRadius:8,border:"none",background:building?"#333":`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:building?"#666":"#000",fontSize:14,fontWeight:700,cursor:building?"default":"pointer",fontFamily:F.body,boxShadow:building?"none":S.goldGlow}}>
+          {building?"Building your deck...":"Build My Deck"}
+        </button>
+      </div>
+      <div style={{textAlign:"center",fontSize:12,color:T.textDim,fontFamily:F.body}}>or search above to add cards manually</div>
     </div>}
 
     {viewMode==="visual"&&TYPE_ORDER.map(cat=>{
