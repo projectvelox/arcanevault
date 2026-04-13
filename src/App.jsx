@@ -1690,39 +1690,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
 
-  const deck=decks.find(d=>d.id===deckId); if(!deck) return null;
-  const tint=getDeckTint(deck);
-
-  const rmCard=(cid,board)=>{
-    setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const c=d.cards.find(x=>x.id===cid&&x.board===board);if(!c)return d;return c.qty>1?{...d,cards:d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)}:{...d,cards:d.cards.filter(x=>x!==c)}}));
-    if(isOnline.current)enqueueWrite(()=>deckCardsApi.remove(deckId,cid,board));
-  };
-
-  const moveCard=(cid,fromBoard,toBoard)=>{
-    setDecks(p=>p.map(d=>{
-      if(d.id!==deckId)return d;
-      const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
-      // Remove or decrement source
-      let cards;
-      if(c.qty>1) cards=d.cards.map(x=>x.id===cid&&x.board===fromBoard?{...x,qty:x.qty-1}:x);
-      else cards=d.cards.filter(x=>!(x.id===cid&&x.board===fromBoard));
-      // Add or increment target
-      const existing=cards.find(x=>x.id===cid&&x.board===toBoard);
-      if(existing) cards=cards.map(x=>x.id===cid&&x.board===toBoard?{...x,qty:x.qty+1}:x);
-      else cards=[...cards,{...c,qty:1,board:toBoard}];
-      return{...d,cards};
-    }));
-    if(isOnline.current)enqueueWrite(()=>deckCardsApi.move(deckId,cid,fromBoard,toBoard));
-  };
-
-  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`);
-    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{name:newName.trim()}));
-  };
-  const updateNotes=(text)=>{setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
-    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{notes:text}));
-  };
+  const deck=decks.find(d=>d.id===deckId);
 
   const stats=useMemo(()=>{
+    if(!deck) return{curve:{},clrs:{},types:{},val:0,total:0,avgMv:0,mainN:0,sideN:0,lands:0,landPct:0,recLands:24,recLandPct:40,drawProb:()=>0};
     const main=deck.cards.filter(c=>c.board==="main"||c.board==="commander");
     const curve={},clrs={},types={};let val=0;
     main.forEach(c=>{const cmc=Math.min(Math.floor(c.cmc||0),7);curve[cmc]=(curve[cmc]||0)+c.qty;(c.mana_cost?.match(/\{([WUBRGC])\}/g)||[]).forEach(m=>{const s=m[1];clrs[s]=(clrs[s]||0)+c.qty});types[typeCategory(c.type_line)]=(types[typeCategory(c.type_line)]||0)+c.qty;if(c.prices?.usd)val+=parseFloat(c.prices.usd)*c.qty});
@@ -1740,9 +1711,37 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     return{curve,clrs,types,val,total,avgMv,mainN,sideN:deck.cards.filter(c=>c.board==="sideboard").reduce((a,c)=>a+c.qty,0),lands,landPct,recLands,recLandPct,drawProb};
   },[deck]);
 
-  const warnings=useMemo(()=>validateDeck(deck),[deck]);
-  const grouped=useMemo(()=>{const g={};deck.cards.filter(c=>c.board==="main"||c.board==="commander").forEach(c=>{const cat=typeCategory(c.type_line);if(!g[cat])g[cat]=[];g[cat].push(c)});return g},[deck]);
-  const allCards=useMemo(()=>deck.cards.filter(c=>c.board==="main"||c.board==="commander"),[deck]);
+  const warnings=useMemo(()=>deck?validateDeck(deck):[],[deck]);
+  const grouped=useMemo(()=>{if(!deck)return{};const g={};deck.cards.filter(c=>c.board==="main"||c.board==="commander").forEach(c=>{const cat=typeCategory(c.type_line);if(!g[cat])g[cat]=[];g[cat].push(c)});return g},[deck]);
+  const allCards=useMemo(()=>deck?deck.cards.filter(c=>c.board==="main"||c.board==="commander"):[],[deck]);
+
+  if(!deck) return null;
+  const tint=getDeckTint(deck);
+
+  const rmCard=(cid,board)=>{
+    setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const c=d.cards.find(x=>x.id===cid&&x.board===board);if(!c)return d;return c.qty>1?{...d,cards:d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)}:{...d,cards:d.cards.filter(x=>x!==c)}}));
+    if(isOnline.current)enqueueWrite(()=>deckCardsApi.remove(deckId,cid,board));
+  };
+  const moveCard=(cid,fromBoard,toBoard)=>{
+    setDecks(p=>p.map(d=>{
+      if(d.id!==deckId)return d;
+      const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
+      let cards;
+      if(c.qty>1) cards=d.cards.map(x=>x.id===cid&&x.board===fromBoard?{...x,qty:x.qty-1}:x);
+      else cards=d.cards.filter(x=>!(x.id===cid&&x.board===fromBoard));
+      const existing=cards.find(x=>x.id===cid&&x.board===toBoard);
+      if(existing) cards=cards.map(x=>x.id===cid&&x.board===toBoard?{...x,qty:x.qty+1}:x);
+      else cards=[...cards,{...c,qty:1,board:toBoard}];
+      return{...d,cards};
+    }));
+    if(isOnline.current)enqueueWrite(()=>deckCardsApi.move(deckId,cid,fromBoard,toBoard));
+  };
+  const renameDeck=(newName)=>{if(!newName.trim())return;setDecks(p=>p.map(d=>d.id===deckId?{...d,name:newName.trim()}:d));setEditing(false);toast(`Renamed to "${newName.trim()}"`);
+    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{name:newName.trim()}));
+  };
+  const updateNotes=(text)=>{setDecks(p=>p.map(d=>d.id===deckId?{...d,notes:text}:d));
+    if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{notes:text}));
+  };
 
   const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
   const buildLib=()=>{const c=[];deck.cards.filter(x=>x.board==="main"||x.board==="commander").forEach(x=>{for(let i=0;i<x.qty;i++)c.push({...x,uid:x.id+"-"+i+"-"+Math.random()})});return shuffle(c)};
@@ -2068,8 +2067,9 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const [fTag,setFTag]=useState("");
   const adj=(id,d,condition,foil)=>{
     const match=c=>c.id===id&&(condition===undefined||(c.condition||"NM")===condition)&&(foil===undefined||(c.foil||false)===foil);
+    const card=coll.find(match);const newQty=(card?.qty||0)+d;
     setColl(p=>{let found=false;return p.map(c=>{if(found||!match(c))return c;found=true;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean)});
-    if(supabase){const card=coll.find(match);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}
+    if(supabase&&card){if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}
   };
   const allTags=useMemo(()=>[...new Set(coll.flatMap(c=>c.tags||[]))].sort(),[coll]);
 
@@ -2086,6 +2086,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     return r;
   },[coll,filter,sort,fColors,fType,fRarity,fSet,fMinPrice,fTag]);
   const hasFilters=fColors.length||fType||fRarity||fSet||fMinPrice||fTag;
+  useEffect(()=>setGridPage(0),[filter,sort,fColors,fType,fRarity,fSet,fMinPrice,fTag,activeBinder]);
   const collSets=useMemo(()=>[...new Set(coll.map(c=>c.set||c.set_code).filter(Boolean))].sort(),[coll]);
 
   return <>
