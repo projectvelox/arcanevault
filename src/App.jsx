@@ -39,10 +39,10 @@ async function searchScryfall(query, colors = [], type = "", set = "", extra = {
   try {
     await scryfallThrottle();
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(parts.join(" "))}&order=name&unique=${set ? "prints" : "cards"}`);
-    if (!res.ok) return { data: [], total: 0 };
+    if (!res.ok) return { data: [], total: 0, error: res.status === 429 ? "rate" : "api" };
     const json = await res.json();
     return { data: json.data || [], total: json.total_cards || 0, nextPage: json.has_more ? json.next_page : null };
-  } catch { return { data: [], total: 0, nextPage: null }; }
+  } catch { return { data: [], total: 0, error: "network" }; }
 }
 
 async function fetchNextPage(url) {
@@ -773,10 +773,11 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const [imgError,setImgError]=useState(false);
   const startX=useRef(0);
   useEffect(()=>{if(supabase&&card?.id)priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))},[card?.id]);
+  const [loadingPrint,setLoadingPrint]=useState(false);const [loadingRule,setLoadingRule]=useState(false);
   useEffect(()=>{setImgLoaded(false);setImgError(false);setFlipped(false)},[index]);
   if(!card) return null;
-  const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
-  const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
+  const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setLoadingPrint(true);setPrintings(await fetchPrintings(card.name));setLoadingPrint(false);setShowPrintings(true);setShowRulings(false)};
+  const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setLoadingRule(true);setRulings(await fetchRulings(card.rulings_uri));setLoadingRule(false);setShowRulings(true);setShowPrintings(false)};
   const onTS=e=>{startX.current=e.touches[0].clientX;setDragging(true);setDragX(0)};
   const onTM=e=>{if(dragging)setDragX(e.touches[0].clientX-startX.current)};
   const onTE=()=>{setDragging(false);if(dragX<-60&&index<cards.length-1)onIndexChange(index+1);else if(dragX>60&&index>0)onIndexChange(index-1);setDragX(0)};
@@ -837,12 +838,13 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         {safeUrl(card.scryfall_uri)&&<div style={{textAlign:"center",marginTop:4}}><a href={safeUrl(card.scryfall_uri)} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:T.textDim,fontFamily:F.body,textDecoration:"underline"}}>View on Scryfall</a></div>}
         <div style={{display:"flex",gap:6,marginTop:8,justifyContent:"center"}}>
           <button onClick={loadPrintings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showPrintings?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
-            {showPrintings?"Hide":"Printings"}
+            {loadingPrint?"Loading...":showPrintings?"Hide":"Printings"}
           </button>
           {card.rulings_uri&&<button onClick={loadRulings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showRulings?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
-            {showRulings?"Hide":"Rulings"}
+            {loadingRule?"Loading...":showRulings?"Hide":"Rulings"}
           </button>}
         </div>
+        {showPrintings&&printings.length===0&&<div style={{marginTop:8,fontSize:11,color:T.textDim,fontFamily:F.body,textAlign:"center"}}>No other printings found</div>}
         {showPrintings&&printings.length>0&&<div style={{marginTop:8,maxHeight:160,overflowY:"auto",background:T.cardInner,borderRadius:10,padding:6}}>
           {printings.map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 8px",borderRadius:6,marginBottom:2,background:p.id===card.id?T.goldGlow:"transparent"}}>
             <img src={getImg(p,"small")} alt={p.set_name} style={{width:28,height:39,borderRadius:3,objectFit:"cover"}}/>
@@ -1222,7 +1224,9 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
     setLoading(true);
     searchScryfall(dQ,dC,dT,dS,{rarity:dR,cmc:dCmc,oracle:dOT}).then(res=>{
       if(!cancelled){setResults(res.data);setTotal(res.total);setNextPage(res.nextPage);setLoading(false);
-        if(res.data.length)cacheSearchResults(res.data); // Cache for offline
+        if(res.error&&!res.data.length)toast(res.error==="rate"?"Scryfall rate limit — wait a moment":"Search unavailable — showing cached results","error");
+        if(res.data.length)cacheSearchResults(res.data);
+        else if(res.error)offlineSearch(dQ).then(off=>{if(!cancelled&&off.length){setResults(off);setTotal(off.length)}});
       }
     }).catch(async()=>{
       // Offline fallback
@@ -1700,7 +1704,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const [editing,setEditing]=useState(false);const [editName,setEditName]=useState("");
   const [mullPhase,setMullPhase]=useState(null);
   const [showNotes,setShowNotes]=useState(false);const [exportFmt,setExportFmt]=useState("text");
-  const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);
+  const [suggestions,setSuggestions]=useState([]);const [showSuggest,setShowSuggest]=useState(false);const [sugLoading,setSugLoading]=useState(false);const [importing,setImporting]=useState(false);
 
   const dAQ=useDebounce(addQ,350),dAC=useDebounce(addColors,350),dAT=useDebounce(addType,350);
   useEffect(()=>{let c=false;if(dAQ.length<2&&!dAC.length&&!dAT){setAddResults([]);return;}searchCards(dAQ,dAC,dAT).then(r=>{if(!c)setAddResults(r)});return()=>{c=true}},[dAQ,dAC,dAT]);
@@ -1760,17 +1764,18 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
 
   const shuffle=a=>{const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]]}return b};
   const buildLib=()=>{const c=[];deck.cards.filter(x=>x.board==="main"||x.board==="commander").forEach(x=>{for(let i=0;i<x.qty;i++)c.push({...x,uid:x.id+"-"+i+"-"+Math.random()})});return shuffle(c)};
-  const newGame=()=>{const l=buildLib();setHand(l.slice(0,7));setLib(l.slice(7));setMulls(0);setDrawn([]);setTurn(1);setShowSim(true);setMullPhase(null)};
+  const newGame=()=>{const l=buildLib();if(!l.length){toast("Add cards to the main deck first","error");return;}setHand(l.slice(0,7));setLib(l.slice(7));setMulls(0);setDrawn([]);setTurn(1);setShowSim(true);setMullPhase(null)};
   // London mulligan: draw 7, then put N cards on bottom (N = mulligan count)
   const mull=()=>{const l=buildLib();const newMulls=mulls+1;setHand(l.slice(0,7));setLib(l.slice(7));setMulls(newMulls);setDrawn([]);setTurn(1);setMullPhase(newMulls>0?newMulls:null)};
   const putBack=(uid)=>{if(!mullPhase)return;const card=hand.find(c=>c.uid===uid);if(!card)return;setHand(h=>h.filter(c=>c.uid!==uid));setLib(l=>[...l,card]);setMullPhase(p=>p-1<=0?null:p-1)};
   const drawCard=()=>{if(!lib.length||mullPhase)return;setDrawn(p=>[...p,lib[0]]);setLib(p=>p.slice(1));setTurn(t=>t+1)};
 
   const handleImport=async()=>{
-    const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No valid entries found");return;}
+    if(importing)return;setImporting(true);
+    const entries=parseDeckList(importText);if(!entries.length){setImportStatus("No valid entries found");setImporting(false);return;}
     setImportStatus(`Importing ${entries.length} cards...`);let imported=0;
     for(const entry of entries){try{await scryfallThrottle();const res=await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(entry.name)}`);if(res.ok){const card=await res.json();for(let i=0;i<entry.qty;i++)addDeck(deckId,card,entry.board);imported++;setImportStatus(`${imported}/${entries.length}...`)}}catch{}}
-    setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);
+    setImportStatus(`Imported ${imported}/${entries.length} cards`);toast(`Imported ${imported} cards`);setImporting(false);
     setTimeout(()=>{setShowImport(false);setImportText("");setImportStatus("")},1500);
   };
   const handleExport=(expFmt="text")=>{const text=exportDeckList(deck,expFmt);navigator.clipboard.writeText(text).then(()=>toast(`Decklist copied (${expFmt==="arena"?"Arena":"text"} format)`)).catch(()=>window.prompt("Copy:",text))};
@@ -1917,7 +1922,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <div style={{fontSize:11,color:T.textDim,marginBottom:8,lineHeight:1.4,fontFamily:F.body}}>Paste your decklist \u2014 the Vault will resolve each card. Use "Sideboard" or "Commander" headers.</div>
       <textarea value={importText} onChange={e=>setImportText(e.target.value)} placeholder={"4 Lightning Bolt\n4 Counterspell\n\nSideboard\n2 Rest in Peace"} style={{width:"100%",height:120,padding:12,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:13,resize:"vertical",boxSizing:"border-box",fontFamily:"monospace",lineHeight:1.5,boxShadow:S.insetInput}}/>
       <div style={{display:"flex",gap:8,marginTop:8,alignItems:"center"}}>
-        <button onClick={handleImport} disabled={!importText.trim()} style={{padding:"10px 20px",borderRadius:4,border:"none",background:importText.trim()?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:importText.trim()?"#000":"#666",fontSize:13,fontWeight:700,cursor:importText.trim()?"pointer":"default",fontFamily:F.body}}>Import</button>
+        <button onClick={handleImport} disabled={!importText.trim()||importing} style={{padding:"10px 20px",borderRadius:4,border:"none",background:importText.trim()&&!importing?`linear-gradient(135deg,${T.gold},${T.goldDark})`:"#333",color:importText.trim()&&!importing?"#000":"#666",fontSize:13,fontWeight:700,cursor:importText.trim()&&!importing?"pointer":"default",fontFamily:F.body}}>{importing?"Importing...":"Import"}</button>
         {importStatus&&<span style={{fontSize:12,color:T.gold,fontFamily:F.body}}>{importStatus}</span>}
       </div>
     </div>}
