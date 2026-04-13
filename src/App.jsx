@@ -5,6 +5,7 @@ import { supabase, signUp, signIn, signOut, getUser, getSession, bindersApi, car
 // SCRYFALL API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const PLACEHOLDER_IMG = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+const safeUrl = u => u && (u.startsWith("https://") || u.startsWith("http://")) ? u : null;
 const getImg = (card, version = "normal") => {
   const uris = card?.image_uris || card?.card_faces?.[0]?.image_uris;
   if (!uris) return PLACEHOLDER_IMG;
@@ -829,11 +830,11 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
         </div>}
         <PriceSparkline snapshots={priceSnaps}/>
         {card.purchase_uris&&<div style={{display:"flex",gap:8,marginTop:6,justifyContent:"center"}}>
-          {card.purchase_uris.tcgplayer&&<a href={card.purchase_uris.tcgplayer} target="_blank" rel="noopener" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
-          {card.purchase_uris.cardmarket&&<a href={card.purchase_uris.cardmarket} target="_blank" rel="noopener" style={{fontSize:10,color:T.blue,fontFamily:F.body,textDecoration:"underline"}}>Cardmarket</a>}
-          {card.purchase_uris.cardhoarder&&<a href={card.purchase_uris.cardhoarder} target="_blank" rel="noopener" style={{fontSize:10,color:"#E8C349",fontFamily:F.body,textDecoration:"underline"}}>Cardhoarder</a>}
+          {safeUrl(card.purchase_uris.tcgplayer)&&<a href={safeUrl(card.purchase_uris.tcgplayer)} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:T.green,fontFamily:F.body,textDecoration:"underline"}}>TCGPlayer</a>}
+          {safeUrl(card.purchase_uris.cardmarket)&&<a href={safeUrl(card.purchase_uris.cardmarket)} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:T.blue,fontFamily:F.body,textDecoration:"underline"}}>Cardmarket</a>}
+          {safeUrl(card.purchase_uris.cardhoarder)&&<a href={safeUrl(card.purchase_uris.cardhoarder)} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#E8C349",fontFamily:F.body,textDecoration:"underline"}}>Cardhoarder</a>}
         </div>}
-        {card.scryfall_uri&&<div style={{textAlign:"center",marginTop:4}}><a href={card.scryfall_uri} target="_blank" rel="noopener" style={{fontSize:10,color:T.textDim,fontFamily:F.body,textDecoration:"underline"}}>View on Scryfall</a></div>}
+        {safeUrl(card.scryfall_uri)&&<div style={{textAlign:"center",marginTop:4}}><a href={safeUrl(card.scryfall_uri)} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:T.textDim,fontFamily:F.body,textDecoration:"underline"}}>View on Scryfall</a></div>}
         <div style={{display:"flex",gap:6,marginTop:8,justifyContent:"center"}}>
           <button onClick={loadPrintings} style={{padding:"6px 14px",borderRadius:8,border:`1px solid ${T.cardBorder}`,background:showPrintings?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>
             {showPrintings?"Hide":"Printings"}
@@ -934,7 +935,7 @@ export default function App() {
     }catch(e){setAuthError(e.message||"Authentication failed")}
     setAuthLoading(false);
   };
-  const handleSignOut=async()=>{await signOut();setUser(null);toast("Signed out")};
+  const handleSignOut=async()=>{await signOut();setUser(null);setDecks([]);setBinders([{id:"main",name:"Collection",cards:[]},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}]);setActiveBinder("main");setSharedDeck(null);setSettings({currency:"usd",defaultFormat:"commander"});setSettingsLoaded(false);toast("Signed out")};
 
   // Load settings
   const [settingsLoaded,setSettingsLoaded]=useState(false);

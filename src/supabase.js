@@ -262,7 +262,7 @@ export const tradeApi = {
 // Deck Sharing
 export const sharingApi = {
   async shareDeck(deckId) {
-    const shareId = crypto.randomUUID().substring(0, 12);
+    const shareId = crypto.randomUUID();
     const { data, error } = await supabase.from('decks').update({ is_public: true, share_id: shareId }).eq('id', deckId).select().single();
     return { data, error, shareId };
   },
@@ -272,9 +272,9 @@ export const sharingApi = {
   },
   async getSharedDeck(shareId) {
     if (!supabase) return { data: null };
-    const { data: deck, error } = await supabase.from('decks').select('*').eq('share_id', shareId).eq('is_public', true).single();
+    const { data: deck, error } = await supabase.from('decks').select('id,name,format,cards_count,tags,notes,is_public,share_id').eq('share_id', shareId).eq('is_public', true).single();
     if (error || !deck) return { data: null, error };
-    const { data: cards } = await supabase.from('deck_cards').select('*').eq('deck_id', deck.id);
+    const { data: cards } = await supabase.from('deck_cards').select('scryfall_id,name,mana_cost,cmc,type_line,oracle_text,image_uris,card_faces,prices,color_identity,rarity,set,set_name,collector_number,board,qty,legalities,power,toughness').eq('deck_id', deck.id);
     return { data: { ...deck, cards: (cards || []).map(c => ({ ...c, id: c.scryfall_id, board: c.board || 'main', image_uris: c.image_uris || {}, prices: c.prices || {}, legalities: c.legalities || {}, color_identity: c.color_identity || [] })) } };
   }
 };
@@ -315,7 +315,8 @@ export const priceApi = {
     return { data: watchlist, error };
   },
   async removeFromWatchlist(scryfallId) {
-    const { error } = await supabase.from('price_snapshots').delete().eq('scryfall_id', scryfallId);
+    const user = await getUser(); if (!user) return { error: 'Not authenticated' };
+    const { error } = await supabase.from('price_snapshots').delete().eq('scryfall_id', scryfallId).eq('user_id', user.id);
     return { error };
   }
 };
