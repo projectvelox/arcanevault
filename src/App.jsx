@@ -769,7 +769,7 @@ function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast
   const rc=RARITY_CLR[card.rarity]||RARITY_CLR.common;
   const cardImgSrc=flipped&&card.card_faces?.[1]?.image_uris?.normal?card.card_faces[1].image_uris.normal:getImg(card);
 
-  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
+  return <div style={{position:"fixed",inset:0,zIndex:300,background:T.bg,display:"flex",flexDirection:"column",paddingTop:"env(safe-area-inset-top)",paddingBottom:"env(safe-area-inset-bottom)"}} onTouchStart={onTS} onTouchMove={onTM} onTouchEnd={onTE}>
     <ArtBg src={getImg(card)} opacity={.25} blur={40} gradient={false}/>
     <div style={{position:"relative",zIndex:1,display:"flex",flexDirection:"column",flex:1}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",flexShrink:0}}>
@@ -1084,9 +1084,9 @@ export default function App() {
         <div style={{fontSize:FS.h1,fontWeight:700,color:T.accent,lineHeight:LH.h1,fontFamily:F.heading,letterSpacing:1.2,textTransform:"uppercase"}}>{hdr[tab][0]}</div>
         <div style={{fontSize:10,fontWeight:600,letterSpacing:2,color:T.textDim,textTransform:"uppercase",marginTop:1,fontFamily:F.body}}>{hdr[tab][1]}</div>
       </div>
-      <button onClick={()=>setShowSettings(!showSettings)} style={{background:"none",border:"none",cursor:"pointer",padding:4}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
-      {user?<button onClick={handleSignOut} style={{background:"none",border:"none",cursor:"pointer",padding:4,display:"flex",alignItems:"center",gap:4}}>
-        <div style={{width:26,height:26,borderRadius:13,background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#000",fontFamily:F.heading}}>{(user.user_metadata?.display_name||user.email||"?")[0].toUpperCase()}</div>
+      <button onClick={()=>setShowSettings(!showSettings)} aria-label="Settings" style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
+      {user?<button onClick={handleSignOut} aria-label="Sign out" style={{background:"none",border:"none",cursor:"pointer",padding:4,display:"flex",alignItems:"center",gap:4}}>
+        <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#000",fontFamily:F.heading}}>{(user.user_metadata?.display_name||user.email||"?")[0].toUpperCase()}</div>
       </button>
       :<button onClick={()=>setAuthMode("signin")} style={{padding:"5px 12px",borderRadius:4,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Sign In</button>}
     </div>
@@ -1277,7 +1277,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         <button onClick={()=>fileRef.current?.click()} style={{width:52,height:52,borderRadius:14,border:`2px solid ${T.gold}`,background:T.cardInner,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:S.goldGlow}} title="Divine a card">{I.camera(T.gold)}</button>
         <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleScan} style={{display:"none"}}/>
       </div>
-      <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4,alignItems:"center"}}>
+      <div style={{display:"flex",gap:6,marginTop:8,overflowX:"auto",paddingBottom:4,alignItems:"center",WebkitOverflowScrolling:"touch"}}>
         <ColorPills colors={colors} setColors={setColors}/>
         <TypeSelect type={type} setType={setType}/>
         <select value={set} onChange={e=>{setSet(e.target.value);if(e.target.value){setBrowseSet(null)}}} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:72,height:34,textAlign:"center"}}><option value="">All sets</option>{sets.map(s=><option key={s.code} value={s.code}>{s.name}</option>)}</select>
@@ -1286,7 +1286,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
         <select value={sortResults} onChange={e=>setSortResults(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:34,textAlign:"center"}}><option value="name">Name</option><option value="price">Price</option><option value="cmc">MV</option><option value="edhrec">Popular</option></select>
         <button onClick={()=>setShowAdv(!showAdv)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${showAdv||(rarity||cmcOp||oText)?T.gold+"66":T.cardBorder}`,background:showAdv?T.goldGlow:"transparent",color:showAdv||rarity||cmcOp||oText?T.gold:T.textDim,fontSize:10,cursor:"pointer",flexShrink:0,height:34,fontFamily:F.body}}>More</button>
       </div>
-      {showAdv&&<div style={{display:"flex",gap:6,marginTop:6,overflowX:"auto",alignItems:"center",paddingBottom:4}}>
+      {showAdv&&<div style={{display:"flex",gap:6,marginTop:6,overflowX:"auto",alignItems:"center",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
         <select value={rarity} onChange={e=>setRarity(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">Rarity</option><option value="common">Common</option><option value="uncommon">Uncommon</option><option value="rare">Rare</option><option value="mythic">Mythic</option></select>
         <select value={cmcOp} onChange={e=>setCmcOp(e.target.value)} style={{padding:"0 8px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:52,height:30,textAlign:"center"}}><option value="">MV</option>{[0,1,2,3,4,5,6,7].map(n=><option key={n} value={`=${n}`}>{n}</option>)}<option value=">=8">8+</option></select>
         <input value={oText} onChange={e=>setOText(e.target.value)} placeholder="Oracle text..." style={{flex:1,padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:11,height:30,minWidth:80,fontFamily:F.body,boxSizing:"border-box"}}/>
@@ -1643,7 +1643,7 @@ function DecksList({decks,setDecks,onOpen,toast}) {
         <div style={{position:"relative",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
           <div style={{flex:1}}>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
-              <span style={{fontSize:17,fontWeight:700,color:T.text,fontFamily:F.heading,letterSpacing:.3}}>{d.name}</span>
+              <span style={{fontSize:17,fontWeight:700,color:T.text,fontFamily:F.heading,letterSpacing:.3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"65vw"}}>{d.name}</span>
               {!sizeOk&&<span style={{lineHeight:0}}>{I.warn(T.red)}</span>}
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center",marginTop:3,flexWrap:"wrap"}}>
@@ -1843,8 +1843,8 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     </div>
 
     {/* Actions */}
-    <div style={{display:"flex",gap:6,marginBottom:12}}>
-      <button onClick={newGame} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:showSim?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.simulate(T.gold)} Playtest</button>
+    <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+      <button onClick={newGame} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.gold}`,background:showSim?T.goldGlow:"transparent",color:T.gold,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body,minWidth:70}}>{I.simulate(T.gold)} Playtest</button>
       <button onClick={()=>setShowImport(!showImport)} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:showImport?T.goldGlow:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.import(T.textMuted)} Import</button>
       <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
       <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
@@ -1864,7 +1864,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           <button onClick={()=>setShowSuggest(false)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}>{I.close(T.textDim)}</button>
         </div>
       </div>
-      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6}}>
+      <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,WebkitOverflowScrolling:"touch"}}>
         {suggestions.map(c=><div key={c.id} style={{flexShrink:0,width:90,textAlign:"center"}}>
           <img src={getImg(c,"small")} alt={c.name} style={{width:90,borderRadius:4,display:"block",cursor:"pointer"}} onClick={()=>{addDeck(deckId,c,"main");toast(`Added ${c.name}`)}}/>
           <div style={{fontSize:11,color:T.text,marginTop:3,lineHeight:1.2,fontFamily:F.body,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
@@ -1933,7 +1933,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     {/* Add cards with filters */}
     <div style={{marginBottom:4}}>
       <input value={addQ} onChange={e=>setAddQ(e.target.value)} placeholder="Search cards to add..." style={{width:"100%",padding:"12px 14px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:14,boxSizing:"border-box",marginBottom:6,fontFamily:F.body,boxShadow:S.insetInput}}/>
-      <div style={{display:"flex",gap:4,overflowX:"auto",alignItems:"center",paddingBottom:4}}>
+      <div style={{display:"flex",gap:4,overflowX:"auto",alignItems:"center",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
         <ColorPills colors={addColors} setColors={setAddColors} size={28}/>
         <TypeSelect type={addType} setType={setAddType} h={30}/>
       </div>
@@ -2090,7 +2090,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
 
   return <>
     {/* Binder selector */}
-    <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:4}}>
+    <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
       {binders.map(b=><button key={b.id} onClick={()=>setActiveBinder(b.id)} style={{padding:"6px 12px",borderRadius:4,border:activeBinder===b.id?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`,background:activeBinder===b.id?T.goldGlow:T.card,color:activeBinder===b.id?T.gold:T.textDim,fontSize:11,fontWeight:activeBinder===b.id?700:500,cursor:"pointer",fontFamily:F.body,flexShrink:0,whiteSpace:"nowrap"}}>{b.type==="wishlist"?"\u2661 ":""}{b.name} ({(b.cards||[]).reduce((a,c)=>a+(c.qty||0),0)})</button>)}
       <button onClick={()=>setShowNewBinder(!showNewBinder)} style={{padding:"6px 10px",borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>+ New</button>
     </div>
@@ -2146,7 +2146,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
       <select value={sort} onChange={e=>setSort(e.target.value)} style={{padding:"10px 12px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:12,fontFamily:F.body}}><option value="name">A-Z</option><option value="price">Price</option><option value="recent">Recent</option></select>
     </div>
 
-    {showFilters&&<div style={{display:"flex",gap:4,overflowX:"auto",alignItems:"center",paddingBottom:8,marginBottom:4}}>
+    {showFilters&&<div style={{display:"flex",gap:4,overflowX:"auto",alignItems:"center",paddingBottom:8,marginBottom:4,WebkitOverflowScrolling:"touch"}}>
       <ColorPills colors={fColors} setColors={setFColors} size={28}/>
       <TypeSelect type={fType} setType={setFType} h={30}/>
       <select value={fRarity} onChange={e=>setFRarity(e.target.value)} style={{padding:"0 10px",borderRadius:18,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:11,cursor:"pointer",flexShrink:0,appearance:"none",minWidth:68,height:30,textAlign:"center"}}><option value="">All rarities</option>{["common","uncommon","rare","mythic"].map(r=><option key={r} value={r}>{r[0].toUpperCase()+r.slice(1)}</option>)}</select>
@@ -2255,7 +2255,7 @@ function GameTools({toast}) {
       <div style={{fontSize:14,fontWeight:700,color:T.accent,fontFamily:F.heading}}>Life Counter</div>
       <div style={{display:"flex",gap:6,alignItems:"center"}}>
         <div style={{display:"flex",gap:2}}>
-          {[2,3,4].map(n=><button key={n} onClick={()=>setPlayerCount2(n)} style={{width:24,height:24,borderRadius:4,border:`1px solid ${playerCount===n?T.gold:T.cardBorder}`,background:playerCount===n?T.goldGlow:"transparent",color:playerCount===n?T.gold:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{n}</button>)}
+          {[2,3,4].map(n=><button key={n} onClick={()=>setPlayerCount2(n)} aria-label={`${n} players`} style={{width:30,height:30,borderRadius:4,border:`1px solid ${playerCount===n?T.gold:T.cardBorder}`,background:playerCount===n?T.goldGlow:"transparent",color:playerCount===n?T.gold:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{n}</button>)}
         </div>
         <select value={format} onChange={e=>{setFormat(e.target.value);const l=startLife[e.target.value]||20;setPlayers(p=>p.map(pl=>({...pl,life:l,cmd:0,poison:0,energy:0})))}} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.textMuted,fontSize:10,fontFamily:F.body}}>
           {Object.keys(startLife).map(f=><option key={f} value={f}>{f[0].toUpperCase()+f.slice(1)}</option>)}
@@ -2273,8 +2273,8 @@ function GameTools({toast}) {
             <button onClick={()=>adjPlayer(idx,"life",1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
           {format==="commander"&&<div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
-            <div style={{fontSize:10,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.cmd}</button></div>
-            <div style={{fontSize:10,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading}}>{pl.poison}</button></div>
+            <div style={{fontSize:10,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} aria-label="Add commander damage" style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading,padding:"4px 6px",minHeight:28}}>{pl.cmd}</button></div>
+            <div style={{fontSize:10,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} aria-label="Add poison counter" style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading,padding:"4px 6px",minHeight:28}}>{pl.poison}</button></div>
           </div>}
           <button onClick={()=>setMonarch(monarch===idx?null:idx)} style={{marginTop:2,background:"none",border:"none",color:monarch===idx?T.gold:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>{monarch===idx?"Monarch":"Set Monarch"}</button>
         </div>)}
@@ -2289,9 +2289,9 @@ function GameTools({toast}) {
         {players.map((pl,idx)=><div key={idx} style={{textAlign:"center"}}>
           <div style={{fontSize:11,color:"#E8C349",fontWeight:600,fontFamily:F.body}}>{pl.name} Energy</div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginTop:2}}>
-            <button onClick={()=>adjPlayer(idx,"energy",-1)} style={{width:24,height:24,borderRadius:12,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
+            <button onClick={()=>adjPlayer(idx,"energy",-1)} aria-label="Decrease energy" style={{width:30,height:30,borderRadius:15,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
             <span style={{fontSize:20,fontWeight:800,color:"#E8C349",fontFamily:F.heading}}>{pl.energy}</span>
-            <button onClick={()=>adjPlayer(idx,"energy",1)} style={{width:24,height:24,borderRadius:12,border:`1px solid #E8C349`,background:"transparent",color:"#E8C349",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+            <button onClick={()=>adjPlayer(idx,"energy",1)} aria-label="Increase energy" style={{width:30,height:30,borderRadius:15,border:`1px solid #E8C349`,background:"transparent",color:"#E8C349",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
         </div>)}
       </div>
@@ -2302,8 +2302,8 @@ function GameTools({toast}) {
       <button onClick={()=>roll(20)} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult&&diceType===20?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{diceResult&&diceType===20?`D20:${diceResult}`:"D20"}</button>
       <button onClick={()=>roll(6)} style={{padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult&&diceType===6?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>{diceResult&&diceType===6?`D6:${diceResult}`:"D6"}</button>
       <div style={{display:"flex",alignItems:"center",gap:2}}>
-        <button onClick={()=>setStormCount(0)} style={{width:20,height:20,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>0</button>
-        <button onClick={()=>setStormCount(v=>v+1)} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${stormCount>0?T.purple:T.cardBorder}`,background:stormCount>0?`${T.purple}15`:"transparent",color:stormCount>0?T.purple:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Storm:{stormCount}</button>
+        <button onClick={()=>setStormCount(0)} aria-label="Reset storm" style={{width:28,height:28,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>0</button>
+        <button onClick={()=>setStormCount(v=>v+1)} style={{padding:"6px 8px",borderRadius:4,border:`1px solid ${stormCount>0?T.purple:T.cardBorder}`,background:stormCount>0?`${T.purple}15`:"transparent",color:stormCount>0?T.purple:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Storm:{stormCount}</button>
       </div>
       <button onClick={()=>{setTurnNum(v=>v+1);setStormCount(0)}} style={{padding:"4px 10px",borderRadius:4,border:`1px solid ${T.gold}44`,background:"transparent",color:T.textMuted,fontSize:10,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Turn {turnNum} \u2192</button>
     </div>
