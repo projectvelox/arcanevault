@@ -265,7 +265,7 @@ function parseDeckList(text) {
     if (["maybeboard","maybeboard:","// maybeboard","maybe","maybe:"].includes(lower)) { board = "maybeboard"; continue; }
     if (["mainboard","mainboard:","main:","// mainboard","deck","deck:"].includes(lower)) { board = "main"; continue; }
     const match = line.match(/^(\d+)x?\s+(.+)$/i);
-    if (match) entries.push({ qty: parseInt(match[1]), name: match[2].trim(), board });
+    if (match) entries.push({ qty: parseInt(match[1]), name: match[2].replace(/\s*\([A-Z0-9]+\)\s*\d*$/,"").trim(), board });
     else entries.push({ qty: 1, name: line, board });
   }
   return entries;
@@ -273,7 +273,8 @@ function parseDeckList(text) {
 
 function exportCollectionCSV(cards) {
   const header = "Quantity,Name,Set,Set Code,Collector Number,Condition,Foil,Language,Price USD";
-  const rows = cards.map(c => `${c.qty},"${c.name}","${c.set_name||""}","${c.set||""}","${c.collector_number||""}","${c.condition||"NM"}","${c.foil?"Yes":"No"}","${(c.language||"en").toUpperCase()}","${c.prices?.usd||""}"`);
+  const esc=s=>(s||"").replace(/"/g,'""');
+  const rows = cards.map(c => `${c.qty},"${esc(c.name)}","${esc(c.set_name)}","${c.set||""}","${c.collector_number||""}","${c.condition||"NM"}","${c.foil?"Yes":"No"}","${(c.language||"en").toUpperCase()}","${c.prices?.usd||""}"`);
   return header + "\n" + rows.join("\n");
 }
 
@@ -748,13 +749,14 @@ function PriceSparkline({snapshots}) {
 }
 
 function CardSlider({cards,index,onIndexChange,onClose,actions,toast:sliderToast}) {
+  const card=cards[index];
   const [dragX,setDragX]=useState(0);const [dragging,setDragging]=useState(false);
   const [printings,setPrintings]=useState([]);const [showPrintings,setShowPrintings]=useState(false);
   const [rulings,setRulings]=useState([]);const [showRulings,setShowRulings]=useState(false);
   const [flipped,setFlipped]=useState(false);
   const [priceSnaps,setPriceSnaps]=useState([]);
   useEffect(()=>{if(supabase&&card?.id)priceApi.getSnapshots(card.id).then(({data})=>setPriceSnaps(data||[]))},[card?.id]);
-  const startX=useRef(0);const card=cards[index]; if(!card) return null;
+  const startX=useRef(0); if(!card) return null;
   const loadPrintings=async()=>{if(showPrintings){setShowPrintings(false);return;}setPrintings(await fetchPrintings(card.name));setShowPrintings(true);setShowRulings(false)};
   const loadRulings=async()=>{if(showRulings){setShowRulings(false);return;}setRulings(await fetchRulings(card.rulings_uri));setShowRulings(true);setShowPrintings(false)};
   const onTS=e=>{startX.current=e.touches[0].clientX;setDragging(true);setDragX(0)};
@@ -867,7 +869,7 @@ export default function App() {
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const shareId=params.get("deck");
-    if(shareId&&supabase){sharingApi.getSharedDeck(shareId).then(({data})=>{if(data)setSharedDeck(data)})}
+    if(shareId&&supabase){sharingApi.getSharedDeck(shareId).then(({data})=>{if(data)setSharedDeck(data);else setSharedDeck({error:true})}).catch(()=>setSharedDeck({error:true}))}
   },[]);
   const [decks,setDecks]=useState([]);
   const [binders,setBinders]=useState([{id:"main",name:"Collection",cards:[]},{id:"wishlist",name:"Wishlist",type:"wishlist",cards:[]}]);
@@ -921,14 +923,17 @@ export default function App() {
   const handleSignOut=async()=>{await signOut();setUser(null);toast("Signed out")};
 
   // Load settings
+  const [settingsLoaded,setSettingsLoaded]=useState(false);
   useEffect(()=>{
-    if(user){profileApi.get().then(({data})=>{if(data?.settings)setSettings(s=>({...s,...data.settings}))});}
-    else{store.get("av-settings").then(s=>{if(s)setSettings(s);else setShowOnboarding(true)})}
+    setSettingsLoaded(false);
+    if(user){profileApi.get().then(({data})=>{if(data?.settings)setSettings(s=>({...s,...data.settings}));setSettingsLoaded(true)}).catch(()=>setSettingsLoaded(true));}
+    else{store.get("av-settings").then(s=>{if(s)setSettings(s);else setShowOnboarding(true);setSettingsLoaded(true)}).catch(()=>setSettingsLoaded(true))}
   },[user]);
   useEffect(()=>{
+    if(!settingsLoaded)return;
     if(ready&&!user)store.set("av-settings",settings);
     if(user)profileApi.update({settings}).catch(()=>{});
-  },[settings,ready,user]);
+  },[settings,ready,user,settingsLoaded]);
 
   // Load data: Supabase if logged in, IndexedDB if not
   useEffect(()=>{(async()=>{
@@ -1047,6 +1052,11 @@ export default function App() {
     {/* Shared deck viewer (read-only, from deep link) */}
     {sharedDeck&&<div style={{position:"fixed",inset:0,zIndex:450,background:"rgba(0,0,0,.95)",overflow:"auto",padding:16}}>
       <div style={{maxWidth:480,margin:"0 auto"}}>
+        {sharedDeck.error?<div style={{textAlign:"center",padding:"60px 20px"}}>
+          <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading,marginBottom:8}}>Deck Not Found</div>
+          <div style={{fontSize:13,color:T.textDim,fontFamily:F.body,marginBottom:16}}>This shared deck may have been removed or the link is invalid.</div>
+          <button onClick={()=>{setSharedDeck(null);window.history.replaceState({},"",window.location.pathname)}} style={{padding:"10px 20px",borderRadius:4,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:13,cursor:"pointer",fontFamily:F.body}}>Go to App</button>
+        </div>:<>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div>
             <h2 style={{margin:0,fontSize:FS.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{sharedDeck.name}</h2>
@@ -1061,6 +1071,7 @@ export default function App() {
           </div>)}
         </div>
         <button onClick={()=>{const text=exportDeckList(sharedDeck);navigator.clipboard.writeText(text).then(()=>toast("Decklist copied!"))}} style={{width:"100%",marginTop:12,padding:12,borderRadius:4,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:FS.body,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Copy Decklist</button>
+      </>}
       </div>
     </div>}
     {isOffline&&<div style={{background:"#2A1A0F",padding:"6px 16px",textAlign:"center",fontSize:11,color:"#E8C349",fontFamily:F.body,fontWeight:600,borderBottom:`1px solid #E8C34933`}}>You are offline \u2014 changes saved locally</div>}
@@ -1378,7 +1389,7 @@ function SearchView({addColl,addDeck,decks,toast,allCollCards}) {
       <div style={{fontSize:15,fontFamily:F.body}}>The spell fizzles \u2014 no cards found</div>
     </div>}
 
-    {slideIdx>=0&&results[slideIdx]&&<CardSlider cards={results} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
+    {slideIdx>=0&&sortedResults[slideIdx]&&<CardSlider cards={sortedResults} index={slideIdx} onIndexChange={setSlideIdx} onClose={()=>setSlideIdx(-1)} toast={toast}
       actions={(card)=><div>
         <div style={{display:"flex",gap:10}}>
           <button onClick={()=>{addColl(card);setShowBurst(true);setTimeout(()=>{setShowBurst(false);setSlideIdx(-1)},400)}} style={{flex:1,padding:14,borderRadius:12,border:"none",background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,color:"#000",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:F.body,boxShadow:S.goldGlow}}>+ Collection</button>
@@ -1580,8 +1591,8 @@ function DecksList({decks,setDecks,onOpen,toast}) {
     const d={id:deckId,name,format,cards:[],notes:"",tags:tag?[tag]:[],wins:0,losses:0,ts:Date.now()};setDecks(p=>[...p,d]);onOpen(d.id);setName("");setShowNew(false);setTag("");toast(`Created "${name}"`);};
   const confirmDelete=()=>{if(!deleteTarget)return;const dk=decks.find(d=>d.id===deleteTarget);setDecks(p=>p.filter(x=>x.id!==deleteTarget));setDeleteTarget(null);if(dk){toast(`Deleted "${dk.name}"`,"error");if(supabase)enqueueWrite(()=>decksApi.delete(deleteTarget))}};
   const cloneDeck=async(d)=>{
-    if(supabase){const{data:nd}=await decksApi.clone(d.id);if(nd){setDecks(p=>[...p,{...nd,cards:[...d.cards],tags:nd.tags||[],notes:nd.notes||""}]);toast(`Cloned "${d.name}"`);return;}}
-    const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:[...d.cards],ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`);
+    if(supabase){const{data:nd}=await decksApi.clone(d.id);if(nd){setDecks(p=>[...p,{...nd,cards:d.cards.map(c=>({...c})),tags:nd.tags||[],notes:nd.notes||""}]);toast(`Cloned "${d.name}"`);return;}}
+    const clone={...d,id:Date.now().toString(),name:d.name+" (copy)",cards:d.cards.map(c=>({...c})),ts:Date.now()};setDecks(p=>[...p,clone]);toast(`Cloned "${d.name}"`);
   };
 
   return <>
@@ -1691,10 +1702,13 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     setDecks(p=>p.map(d=>{
       if(d.id!==deckId)return d;
       const c=d.cards.find(x=>x.id===cid&&x.board===fromBoard);if(!c)return d;
-      const existing=d.cards.find(x=>x.id===cid&&x.board===toBoard);
-      let cards=d.cards.filter(x=>x!==c);
-      if(c.qty>1) cards=[...d.cards.map(x=>x===c?{...x,qty:x.qty-1}:x)];
-      if(existing) cards=cards.map(x=>x===existing?{...x,qty:x.qty+1}:x);
+      // Remove or decrement source
+      let cards;
+      if(c.qty>1) cards=d.cards.map(x=>x.id===cid&&x.board===fromBoard?{...x,qty:x.qty-1}:x);
+      else cards=d.cards.filter(x=>!(x.id===cid&&x.board===fromBoard));
+      // Add or increment target
+      const existing=cards.find(x=>x.id===cid&&x.board===toBoard);
+      if(existing) cards=cards.map(x=>x.id===cid&&x.board===toBoard?{...x,qty:x.qty+1}:x);
       else cards=[...cards,{...c,qty:1,board:toBoard}];
       return{...d,cards};
     }));
@@ -1722,7 +1736,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     const recLands=Math.round(19.59+(1.9*avgMv));
     const recLandPct=mainN?Math.round((recLands/Math.max(mainN,60))*100):40;
     // Draw probability: chance of drawing at least 1 copy in opening 7
-    const drawProb=(copies,deckSize,hand=7)=>{if(!copies||!deckSize||copies>deckSize)return 0;let miss=1;for(let i=0;i<hand;i++)miss*=(deckSize-copies-i)/(deckSize-i);return Math.round((1-miss)*100)};
+    const drawProb=(copies,deckSize,hand=7)=>{if(!copies||!deckSize||copies>deckSize)return 0;let miss=1;for(let i=0;i<hand;i++){const num=deckSize-copies-i;const den=deckSize-i;if(den<=0||num<0){miss=0;break;}miss*=num/den;}return Math.round((1-miss)*100)};
     return{curve,clrs,types,val,total,avgMv,mainN,sideN:deck.cards.filter(c=>c.board==="sideboard").reduce((a,c)=>a+c.qty,0),lands,landPct,recLands,recLandPct,drawProb};
   },[deck]);
 
@@ -1735,7 +1749,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
   const newGame=()=>{const l=buildLib();setHand(l.slice(0,7));setLib(l.slice(7));setMulls(0);setDrawn([]);setTurn(1);setShowSim(true);setMullPhase(null)};
   // London mulligan: draw 7, then put N cards on bottom (N = mulligan count)
   const mull=()=>{const l=buildLib();const newMulls=mulls+1;setHand(l.slice(0,7));setLib(l.slice(7));setMulls(newMulls);setDrawn([]);setTurn(1);setMullPhase(newMulls>0?newMulls:null)};
-  const putBack=(uid)=>{if(!mullPhase)return;setHand(h=>h.filter(c=>c.uid!==uid));setLib(l=>[...l,hand.find(c=>c.uid===uid)]);setMullPhase(p=>p-1<=0?null:p-1)};
+  const putBack=(uid)=>{if(!mullPhase)return;const card=hand.find(c=>c.uid===uid);if(!card)return;setHand(h=>h.filter(c=>c.uid!==uid));setLib(l=>[...l,card]);setMullPhase(p=>p-1<=0?null:p-1)};
   const drawCard=()=>{if(!lib.length||mullPhase)return;setDrawn(p=>[...p,lib[0]]);setLib(p=>p.slice(1));setTurn(t=>t+1)};
 
   const handleImport=async()=>{
@@ -1779,7 +1793,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
           {editing?<input value={editName} onChange={e=>setEditName(e.target.value)} onBlur={()=>renameDeck(editName)} onKeyDown={e=>{if(e.key==="Enter")renameDeck(editName);if(e.key==="Escape")setEditing(false)}} autoFocus style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,background:"transparent",border:`1px solid ${T.gold}`,borderRadius:4,padding:"2px 6px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
           :<h2 onClick={()=>{setEditName(deck.name);setEditing(true)}} style={{margin:"0 0 2px",fontSize:FS.cardDetail,lineHeight:LH.cardDetail,fontWeight:700,color:T.accent,fontFamily:F.heading,letterSpacing:.5,cursor:"pointer"}} title="Click to rename">{deck.name}</h2>}
           <div style={{display:"flex",gap:8,fontSize:12,color:T.textDim,fontFamily:F.body,flexWrap:"wrap",alignItems:"center"}}>
-            <select value={deck.format} onChange={e=>setDecks(p=>p.map(d=>d.id===deckId?{...d,format:e.target.value}:d))} style={{background:"transparent",border:"none",color:T.textDim,fontSize:12,fontFamily:F.body,cursor:"pointer",padding:0}}>{Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
+            <select value={deck.format} onChange={e=>{const fmt2=e.target.value;setDecks(p=>p.map(d=>d.id===deckId?{...d,format:fmt2}:d));if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,{format:fmt2}))}} style={{background:"transparent",border:"none",color:T.textDim,fontSize:12,fontFamily:F.body,cursor:"pointer",padding:0}}>{Object.entries(FORMAT_RULES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select>
             <span>{stats.mainN} main{stats.sideN>0?` / ${stats.sideN} side`:""}</span>
             <span style={{color:T.green,fontWeight:700}}>{fmt(stats.val.toFixed(2))}</span>
             <span>Avg MV: {stats.avgMv.toFixed(1)}</span>
@@ -1835,10 +1849,10 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
       <button onClick={()=>handleExport("text")} style={{flex:1,padding:10,borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textMuted,fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:5,fontFamily:F.body}}>{I.export(T.textMuted)} Export</button>
       <button onClick={()=>handleExport("arena")} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.textDim}`,background:"transparent",color:T.textDim,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Arena</button>
       <button onClick={fetchSuggestions} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${T.purple}`,background:showSuggest?`${T.purple}15`:"transparent",color:T.purple,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{sugLoading?"...":"Suggest"}</button>
-      {supabase&&user&&<button onClick={async()=>{
+      {supabase&&user&&<button onClick={async()=>{try{
         if(deck.is_public){await sharingApi.unshareDeck(deckId);setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:false,share_id:null}:d));toast("Deck unshared")}
         else{const{shareId}=await sharingApi.shareDeck(deckId);if(shareId){setDecks(p=>p.map(d=>d.id===deckId?{...d,is_public:true,share_id:shareId}:d));navigator.clipboard.writeText(`${window.location.origin}?deck=${shareId}`).then(()=>toast("Share link copied!")).catch(()=>toast(`Share ID: ${shareId}`))}}
-      }} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${deck.is_public?T.green:T.blue}`,background:deck.is_public?`${T.green}15`:"transparent",color:deck.is_public?T.green:T.blue,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{deck.is_public?"Shared":"Share"}</button>}
+      }catch{toast("Failed to share — check your connection","error")}}} style={{padding:"10px 8px",borderRadius:4,border:`1.5px solid ${deck.is_public?T.green:T.blue}`,background:deck.is_public?`${T.green}15`:"transparent",color:deck.is_public?T.green:T.blue,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>{deck.is_public?"Shared":"Share"}</button>}
     </div>
 
     {/* Card suggestions */}
@@ -1865,9 +1879,9 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
         <button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body,padding:0,textDecoration:"underline"}}>{showNotes?"Hide notes":"Notes"}{deck.notes?" \u2022":"..."}</button>
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>Record:</span>
-          <button onClick={()=>{const opp=prompt("Opponent deck (optional):");setDecks(p=>p.map(d=>d.id===deckId?{...d,wins:(d.wins||0)+1,matchLog:[...(d.matchLog||[]),{result:"W",vs:opp||"",date:new Date().toISOString().split("T")[0]}]}:d));toast("Win logged!")}} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.green}`,background:"transparent",color:T.green,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+W</button>
+          <button onClick={()=>{const opp=prompt("Opponent deck (optional):");setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const up={wins:(d.wins||0)+1,matchLog:[...(d.matchLog||[]),{result:"W",vs:opp||"",date:new Date().toISOString().split("T")[0]}]};if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,up));return{...d,...up}}));toast("Win logged!")}} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.green}`,background:"transparent",color:T.green,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+W</button>
           <span style={{fontSize:12,fontWeight:700,color:T.textMuted,fontFamily:F.heading}}>{deck.wins||0}-{deck.losses||0}</span>
-          <button onClick={()=>{const opp=prompt("Opponent deck (optional):");setDecks(p=>p.map(d=>d.id===deckId?{...d,losses:(d.losses||0)+1,matchLog:[...(d.matchLog||[]),{result:"L",vs:opp||"",date:new Date().toISOString().split("T")[0]}]}:d));toast("Loss logged")}} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+L</button>
+          <button onClick={()=>{const opp=prompt("Opponent deck (optional):");setDecks(p=>p.map(d=>{if(d.id!==deckId)return d;const up={losses:(d.losses||0)+1,matchLog:[...(d.matchLog||[]),{result:"L",vs:opp||"",date:new Date().toISOString().split("T")[0]}]};if(isOnline.current)enqueueWrite(()=>decksApi.update(deckId,up));return{...d,...up}}));toast("Loss logged")}} style={{padding:"2px 8px",borderRadius:3,border:`1px solid ${T.red}`,background:"transparent",color:T.red,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>+L</button>
         </div>
         {deck.matchLog?.length>0&&<button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:T.textDim,background:"none",border:"none",cursor:"pointer",fontFamily:F.body}}>{deck.matchLog.length} matches</button>}
       </div>
@@ -1980,7 +1994,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
             <span style={{fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:F.body}}>{c.name}</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-            <span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>{stats.drawProb(c.qty,stats.mainN)}%</span>
+            {(board==="main"||board==="commander")&&<span style={{fontSize:11,color:T.textDim,fontFamily:F.body}}>{stats.drawProb(c.qty,stats.mainN)}%</span>}
             <span style={{fontSize:11,color:T.green,fontFamily:F.body}}>{fmt(c.prices?.usd)}</span>
             <button onClick={e=>{e.stopPropagation();rmCard(c.id,board)}} style={{width:28,height:28,borderRadius:4,border:"none",background:"#1E1215",color:T.red,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{"\u2212"}</button>
           </div>
@@ -2025,7 +2039,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const [showImportColl,setShowImportColl]=useState(false);const [importCollText,setImportCollText]=useState("");const [importCollStatus,setImportCollStatus]=useState("");
 
   const currentBinder=binders.find(b=>b.id===activeBinder)||binders[0];
-  const totalVal=coll.reduce((a,c)=>a+(parseFloat(c.foil?c.prices?.usd_foil:c.prices?.usd||0)*c.qty),0);
+  const totalVal=coll.reduce((a,c)=>a+(parseFloat((c.foil?c.prices?.usd_foil:c.prices?.usd)||0)*(c.qty||0)),0);
   const totalCards=coll.reduce((a,c)=>a+c.qty,0);
 
   const createBinder=async()=>{if(!newBinderName.trim())return;
@@ -2035,8 +2049,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   const deleteBinder=(id)=>{if(id==="main")return;setBinders(p=>p.filter(b=>b.id!==id));if(activeBinder===id)setActiveBinder("main");toast("Binder deleted","error");if(supabase)enqueueWrite(()=>bindersApi.delete(id))};
   const toggleSelect=(id)=>setSelected(p=>{const n=new Set(p);if(n.has(id))n.delete(id);else n.add(id);return n});
   const selectAll=()=>setSelected(new Set(items.map(c=>c.id)));
-  const bulkDelete=()=>{setColl(p=>p.filter(c=>!selected.has(c.id)));toast(`Removed ${selected.size} cards`,"error");setSelected(new Set());setSelectMode(false)};
-  const bulkMoveTo=(targetId)=>{const toMove=coll.filter(c=>selected.has(c.id));setBinders(p=>p.map(b=>{if(b.id===activeBinder)return{...b,cards:b.cards.filter(c=>!selected.has(c.id))};if(b.id===targetId)return{...b,cards:[...b.cards,...toMove]};return b}));toast(`Moved ${selected.size} cards`);setSelected(new Set());setSelectMode(false)};
+  const bulkDelete=()=>{if(supabase)selected.forEach(id=>enqueueWrite(()=>cardsApi.delete(id)));setColl(p=>p.filter(c=>!selected.has(c.id)));toast(`Removed ${selected.size} cards`,"error");setSelected(new Set());setSelectMode(false)};
+  const bulkMoveTo=(targetId)=>{const toMove=coll.filter(c=>selected.has(c.id));if(supabase)toMove.forEach(c=>enqueueWrite(()=>cardsApi.move(c.id,targetId)));setBinders(p=>p.map(b=>{if(b.id===activeBinder)return{...b,cards:b.cards.filter(c=>!selected.has(c.id))};if(b.id===targetId)return{...b,cards:[...b.cards,...toMove]};return b}));toast(`Moved ${selected.size} cards`);setSelected(new Set());setSelectMode(false)};
   const editCardMeta=(cardId,field,value)=>{setColl(p=>p.map(c=>c.id===cardId?{...c,[field]:value}:c));if(supabase)enqueueWrite(()=>cardsApi.update(cardId,{[field]:value}))};
   const handleExportCSV=()=>{const csv=exportCollectionCSV(coll);navigator.clipboard.writeText(csv).then(()=>toast("CSV copied to clipboard")).catch(()=>window.prompt("Copy:",csv))};
   const handleImportColl=async()=>{
@@ -2061,8 +2075,8 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
     return r;
   },[coll,filter,sort,fColors,fType,fRarity,fSet,fMinPrice,fTag]);
 
-  const adj=(id,d)=>setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
   const [fTag,setFTag]=useState("");
+  const adj=(id,d)=>{setColl(p=>p.map(c=>{if(c.id!==id)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));if(supabase){const card=coll.find(c=>c.id===id);const newQty=(card?.qty||0)+d;if(newQty<=0)enqueueWrite(()=>cardsApi.delete(id));else enqueueWrite(()=>cardsApi.update(id,{qty:newQty}))}};
   const allTags=useMemo(()=>[...new Set(coll.flatMap(c=>c.tags||[]))].sort(),[coll]);
   const hasFilters=fColors.length||fType||fRarity||fSet||fMinPrice||fTag;
   const collSets=useMemo(()=>[...new Set(coll.map(c=>c.set||c.set_code).filter(Boolean))].sort(),[coll]);
@@ -2070,7 +2084,7 @@ function BinderView({coll,setColl,toast,binders,setBinders,activeBinder,setActiv
   return <>
     {/* Binder selector */}
     <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:4}}>
-      {binders.map(b=><button key={b.id} onClick={()=>setActiveBinder(b.id)} style={{padding:"6px 12px",borderRadius:4,border:activeBinder===b.id?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`,background:activeBinder===b.id?T.goldGlow:T.card,color:activeBinder===b.id?T.gold:T.textDim,fontSize:11,fontWeight:activeBinder===b.id?700:500,cursor:"pointer",fontFamily:F.body,flexShrink:0,whiteSpace:"nowrap"}}>{b.type==="wishlist"?"\u2661 ":""}{b.name} ({b.cards.reduce((a,c)=>a+c.qty,0)})</button>)}
+      {binders.map(b=><button key={b.id} onClick={()=>setActiveBinder(b.id)} style={{padding:"6px 12px",borderRadius:4,border:activeBinder===b.id?`1.5px solid ${T.gold}`:`1px solid ${T.cardBorder}`,background:activeBinder===b.id?T.goldGlow:T.card,color:activeBinder===b.id?T.gold:T.textDim,fontSize:11,fontWeight:activeBinder===b.id?700:500,cursor:"pointer",fontFamily:F.body,flexShrink:0,whiteSpace:"nowrap"}}>{b.type==="wishlist"?"\u2661 ":""}{b.name} ({(b.cards||[]).reduce((a,c)=>a+(c.qty||0),0)})</button>)}
       <button onClick={()=>setShowNewBinder(!showNewBinder)} style={{padding:"6px 10px",borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:11,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>+ New</button>
     </div>
     {showNewBinder&&<div style={{display:"flex",gap:6,marginBottom:10}}>
@@ -2215,7 +2229,7 @@ function GameTools({toast}) {
   const [players,setPlayers]=useState([{name:"You",life:40,cmd:0,poison:0,energy:0},{name:"Opp",life:40,cmd:0,poison:0,energy:0}]);
   const [monarch,setMonarch]=useState(null);const [showExtra,setShowExtra]=useState(false);
   const [format,setFormat]=useState("commander");
-  const [coinResult,setCoinResult]=useState(null);const [diceResult,setDiceResult]=useState(null);
+  const [coinResult,setCoinResult]=useState(null);const [diceResult,setDiceResult]=useState(null);const [diceType,setDiceType]=useState(20);
   const [stormCount,setStormCount]=useState(0);const [turnNum,setTurnNum]=useState(1);
   const [gameLog,setGameLog]=useState([]);
   const startLife={commander:40,standard:20,modern:20,pioneer:20,legacy:20,vintage:20,pauper:20};
@@ -2225,7 +2239,7 @@ function GameTools({toast}) {
 
   const reset=()=>{const l=startLife[format]||20;setPlayers(p=>p.map(pl=>({...pl,life:l,cmd:0,poison:0,energy:0})));setMonarch(null);setStormCount(0);setTurnNum(1);setGameLog([])};
   const flip=()=>{const r=Math.random()<.5?"Heads":"Tails";setCoinResult(r);toast(r);setTimeout(()=>setCoinResult(null),2000)};
-  const roll=(sides=20)=>{const r=Math.floor(Math.random()*sides)+1;setDiceResult(r);toast(`Rolled ${r}`);setTimeout(()=>setDiceResult(null),2000)};
+  const roll=(sides=20)=>{const r=Math.floor(Math.random()*sides)+1;setDiceResult(r);setDiceType(sides);toast(`D${sides}: ${r}`);setTimeout(()=>setDiceResult(null),2000)};
 
   return <div style={{marginBottom:16}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -2276,8 +2290,8 @@ function GameTools({toast}) {
     {/* Storm + Turn + Dice */}
     <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
       <button onClick={flip} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:coinResult?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{coinResult||"Coin"}</button>
-      <button onClick={()=>roll(20)} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{diceResult?`D20:${diceResult}`:"D20"}</button>
-      <button onClick={()=>roll(6)} style={{padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>D6</button>
+      <button onClick={()=>roll(20)} style={{flex:1,padding:"8px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult&&diceType===20?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame,minWidth:60}}>{diceResult&&diceType===20?`D20:${diceResult}`:"D20"}</button>
+      <button onClick={()=>roll(6)} style={{padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.card,color:diceResult&&diceType===6?T.accent:T.textMuted,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:F.body,boxShadow:S.cardFrame}}>{diceResult&&diceType===6?`D6:${diceResult}`:"D6"}</button>
       <div style={{display:"flex",alignItems:"center",gap:2}}>
         <button onClick={()=>setStormCount(0)} style={{width:20,height:20,borderRadius:4,border:`1px solid ${T.cardBorder}`,background:"transparent",color:T.textDim,fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>0</button>
         <button onClick={()=>setStormCount(v=>v+1)} style={{padding:"4px 8px",borderRadius:4,border:`1px solid ${stormCount>0?T.purple:T.cardBorder}`,background:stormCount>0?`${T.purple}15`:"transparent",color:stormCount>0?T.purple:T.textDim,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body}}>Storm:{stormCount}</button>
@@ -2295,7 +2309,7 @@ function TradeView({toast}) {
   useEffect(()=>{let c=false;if(dQ.length<2){setResults([]);return;}searchCards(dQ).then(r=>{if(!c)setResults(r)});return()=>{c=true}},[dQ]);
   // Load trade history
   useEffect(()=>{
-    if(supabase){tradeApi.list().then(({data})=>{if(data&&data.length)setHistory(data.map(t=>({id:t.id,date:t.trade_date,give:t.give,recv:t.recv,giveTotal:t.give_total,recvTotal:t.recv_total})))})}
+    if(supabase){tradeApi.list().then(({data})=>{if(data&&data.length)setHistory(data.map(t=>({id:t.id,date:t.trade_date,give:t.give,recv:t.recv,giveTotal:t.give_total,recvTotal:t.recv_total})))}).catch(()=>store.get("av-trade-history").then(h=>{if(h)setHistory(h)}))}
     else{store.get("av-trade-history").then(h=>{if(h)setHistory(h)})}
   },[]);
 
@@ -2309,7 +2323,7 @@ function TradeView({toast}) {
     if(!give.length&&!recv.length)return;
     const entry={id:Date.now(),date:new Date().toISOString().split("T")[0],give:give.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),recv:recv.map(c=>({name:c.name,qty:c.qty,price:c.prices?.usd})),giveTotal:giveT,recvTotal:recvT};
     const newH=[entry,...history].slice(0,20);setHistory(newH);
-    if(supabase){try{await tradeApi.save(entry)}catch{}}
+    if(supabase){try{await tradeApi.save(entry)}catch{toast("Failed to save trade to cloud — saved locally","error");store.set("av-trade-history",newH)}}
     else{store.set("av-trade-history",newH)}
     toast("Trade saved to history");setGive([]);setRecv([]);
   };
