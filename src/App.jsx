@@ -307,15 +307,19 @@ function exportDeckList(deck, format = "text") {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 const FORMAT_RULES = {
   commander: { min: 100, max: 100, copies: 1, sideboard: 0, label: "Commander", countCommander: true },
+  brawl:     { min: 60, max: 60, copies: 1, sideboard: 0, label: "Brawl", countCommander: true },
   standard:  { min: 60, max: null, copies: 4, sideboard: 15, label: "Standard" },
   modern:    { min: 60, max: null, copies: 4, sideboard: 15, label: "Modern" },
   pioneer:   { min: 60, max: null, copies: 4, sideboard: 15, label: "Pioneer" },
   legacy:    { min: 60, max: null, copies: 4, sideboard: 15, label: "Legacy" },
   vintage:   { min: 60, max: null, copies: 4, sideboard: 15, label: "Vintage" },
   pauper:    { min: 60, max: null, copies: 4, sideboard: 15, label: "Pauper" },
+  limited:   { min: 40, max: null, copies: null, sideboard: null, label: "Limited" },
+  oathbreaker:{ min: 58, max: 58, copies: 1, sideboard: 0, label: "Oathbreaker", countCommander: true },
 };
 const BASIC_LANDS = ["plains","island","swamp","mountain","forest","wastes","snow-covered plains","snow-covered island","snow-covered swamp","snow-covered mountain","snow-covered forest"];
-const ANY_NUMBER_CARDS = ["relentless rats","rat colony","shadowborn apostle","persistent petitioners","dragon's approach","seven dwarves","slime against humanity"];
+const ANY_NUMBER_CARDS = ["relentless rats","rat colony","shadowborn apostle","persistent petitioners","dragon's approach","slime against humanity"];
+const CAPPED_NUMBER_CARDS = {"seven dwarves":7};
 
 function validateDeck(deck) {
   const rules = FORMAT_RULES[deck.format] || FORMAT_RULES.standard;
@@ -329,7 +333,17 @@ function validateDeck(deck) {
   if (rules.min && mainCount >= rules.min && (!rules.max || mainCount <= rules.max)) warnings.push({ msg: `${mainCount}/${rules.min}+ cards`, severity: "ok" });
   if (rules.sideboard > 0 && sideCount > rules.sideboard) warnings.push({ msg: `Sideboard: ${sideCount}/${rules.sideboard} (${sideCount - rules.sideboard} over)`, severity: "warn" });
   const violations = [];
-  mainCards.forEach(c => { const nl=c.name.toLowerCase(); if (!BASIC_LANDS.includes(nl) && !ANY_NUMBER_CARDS.includes(nl) && !(c.oracle_text||"").toLowerCase().includes("a deck can have any number") && c.qty > rules.copies) violations.push(`${c.name} (${c.qty}x, max ${rules.copies})`); });
+  if(rules.copies){
+    // Combine main+side quantities per card name for copy limit check
+    const allCards=[...mainCards,...sideCards];const qtyByName={};
+    allCards.forEach(c=>{const nl=c.name.toLowerCase();qtyByName[nl]=(qtyByName[nl]||0)+c.qty});
+    Object.entries(qtyByName).forEach(([nl,qty])=>{
+      if(BASIC_LANDS.includes(nl))return;if(ANY_NUMBER_CARDS.includes(nl))return;
+      if((allCards.find(c=>c.name.toLowerCase()===nl)?.oracle_text||"").toLowerCase().includes("a deck can have any number"))return;
+      const cap=CAPPED_NUMBER_CARDS[nl]||rules.copies;
+      if(qty>cap)violations.push(`${allCards.find(c=>c.name.toLowerCase()===nl)?.name} (${qty}x, max ${cap})`);
+    });
+  }
   if (violations.length) warnings.push({ msg: `Over copy limit: ${violations.join(", ")}`, severity: "error" });
 
   // Commander color identity validation
@@ -532,9 +546,9 @@ const typeCategory = (typeLine) => {
   if (t.includes("creature")) return "Creatures"; if (t.includes("instant")) return "Instants";
   if (t.includes("sorcery")) return "Sorceries"; if (t.includes("enchantment")) return "Enchantments";
   if (t.includes("artifact")) return "Artifacts"; if (t.includes("planeswalker")) return "Planeswalkers";
-  if (t.includes("land")) return "Lands"; return "Other";
+  if (t.includes("battle")) return "Battles"; if (t.includes("land")) return "Lands"; return "Other";
 };
-const TYPE_ORDER = ["Creatures","Planeswalkers","Instants","Sorceries","Enchantments","Artifacts","Lands","Other"];
+const TYPE_ORDER = ["Creatures","Planeswalkers","Battles","Instants","Sorceries","Enchantments","Artifacts","Lands","Other"];
 
 // IndexedDB store with localStorage migration
 const store = {
@@ -1696,7 +1710,7 @@ function DeckEditor({deckId,decks,setDecks,addDeck,onBack,toast,coll,allCollCard
     if(!deck) return{curve:{},clrs:{},types:{},val:0,total:0,avgMv:0,mainN:0,sideN:0,lands:0,landPct:0,recLands:24,recLandPct:40,drawProb:()=>0};
     const main=deck.cards.filter(c=>c.board==="main"||c.board==="commander");
     const curve={},clrs={},types={};let val=0;
-    main.forEach(c=>{const cmc=Math.min(Math.floor(c.cmc||0),7);curve[cmc]=(curve[cmc]||0)+c.qty;(c.mana_cost?.match(/\{([WUBRGC])\}/g)||[]).forEach(m=>{const s=m[1];clrs[s]=(clrs[s]||0)+c.qty});types[typeCategory(c.type_line)]=(types[typeCategory(c.type_line)]||0)+c.qty;if(c.prices?.usd)val+=parseFloat(c.prices.usd)*c.qty});
+    main.forEach(c=>{const cmc=Math.min(Math.floor(c.cmc||0),7);curve[cmc]=(curve[cmc]||0)+c.qty;(c.mana_cost?.match(/\{[^}]*[WUBRGC][^}]*\}/g)||[]).forEach(m=>{[..."WUBRGC"].forEach(s=>{if(m.includes(s))clrs[s]=(clrs[s]||0)+c.qty})});types[typeCategory(c.type_line)]=(types[typeCategory(c.type_line)]||0)+c.qty;const pr=_currency==="eur"?c.prices?.eur:c.foil?c.prices?.usd_foil:c.prices?.usd;if(pr)val+=parseFloat(pr)*c.qty});
     const total=deck.cards.reduce((a,c)=>a+c.qty,0);const mainN=main.reduce((a,c)=>a+c.qty,0);
     const nonLand=main.filter(c=>!(c.type_line||"").toLowerCase().includes("land"));
     const nonLandN=nonLand.reduce((a,c)=>a+c.qty,0);
@@ -2273,10 +2287,10 @@ function GameTools({toast}) {
             <div style={{fontSize:playerCount<=2?FS.statLg:FS.statSm,fontWeight:900,color:pl.life<=0?T.red:T.accent,fontFamily:F.heading,minWidth:36,textShadow:pl.life<=0?"0 0 20px rgba(239,68,68,.4)":GLOW}}>{pl.life}</div>
             <button onClick={()=>adjPlayer(idx,"life",1)} style={{width:32,height:32,borderRadius:16,border:`1.5px solid ${T.green}`,background:"transparent",color:T.green,fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
           </div>
-          {format==="commander"&&<div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
-            <div style={{fontSize:10,color:T.textDim}}>Cmd:<button onClick={()=>{adjPlayer(idx,"cmd",1);adjPlayer(idx,"life",-1)}} aria-label="Add commander damage" style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading,padding:"4px 6px",minHeight:28}}>{pl.cmd}</button></div>
+          <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:4}}>
+            {format==="commander"&&<div style={{fontSize:10,color:T.textDim}}>Cmd:<button onClick={()=>adjPlayer(idx,"cmd",1)} aria-label="Add commander damage" style={{background:"none",border:"none",color:pl.cmd>=21?T.red:T.textMuted,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading,padding:"4px 6px",minHeight:28}}>{pl.cmd}</button></div>}
             <div style={{fontSize:10,color:T.textDim}}>Psn:<button onClick={()=>adjPlayer(idx,"poison",1)} aria-label="Add poison counter" style={{background:"none",border:"none",color:pl.poison>=10?T.red:"#9F5FBF",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:F.heading,padding:"4px 6px",minHeight:28}}>{pl.poison}</button></div>
-          </div>}
+          </div>
           <button onClick={()=>setMonarch(monarch===idx?null:idx)} style={{marginTop:2,background:"none",border:"none",color:monarch===idx?T.gold:T.textDim,fontSize:10,cursor:"pointer",fontFamily:F.body}}>{monarch===idx?"Monarch":"Set Monarch"}</button>
         </div>)}
       </div>
@@ -2325,8 +2339,9 @@ function TradeView({toast}) {
 
   const add=card=>{const e={...card,uid:Date.now(),qty:1};if(side==="give")setGive(p=>[...p,e]);else setRecv(p=>[...p,e]);setSide(null);setQ("");setResults([]);toast(`Added ${card.name}`)};
   const adjTrade=(list,setList,uid,d)=>setList(p=>p.map(c=>{if(c.uid!==uid)return c;const n=c.qty+d;return n<=0?null:{...c,qty:n}}).filter(Boolean));
-  const giveT=give.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
-  const recvT=recv.reduce((a,c)=>a+(parseFloat(c.prices?.usd||0))*(c.qty||1),0);
+  const tradePrice=c=>parseFloat((_currency==="eur"?c.prices?.eur:c.prices?.usd)||0);
+  const giveT=give.reduce((a,c)=>a+tradePrice(c)*(c.qty||1),0);
+  const recvT=recv.reduce((a,c)=>a+tradePrice(c)*(c.qty||1),0);
   const diff=giveT-recvT;
   const clearAll=()=>{setGive([]);setRecv([]);toast("Trade cleared","info")};
   const saveTrade=async()=>{
