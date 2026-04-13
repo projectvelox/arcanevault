@@ -1071,7 +1071,9 @@ export default function App() {
   const [ready,setReady]=useState(false);
   const {toasts,show:toast}=useToast();
   const [settings,setSettings]=useState({currency:"usd",defaultFormat:"commander"});
-  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);const [showAbout,setShowAbout]=useState(false);
+  const [showSettings,setShowSettings]=useState(false);const [showChangelog,setShowChangelog]=useState(false);const [showFaq,setShowFaq]=useState(false);const [showAbout,setShowAbout]=useState(false);const [showDrawer,setShowDrawer]=useState(false);
+  const [userAvatar,setUserAvatar]=useState(null);
+  useEffect(()=>{if(user&&supabase)profileApi.get().then(({data})=>{if(data?.avatar_url)setUserAvatar(data.avatar_url)})},[user]);
   const [isNewVersion,setIsNewVersion]=useState(false);
   useEffect(()=>{store.get("av-last-version").then(v=>{if(v!==APP_VERSION){setIsNewVersion(true);store.set("av-last-version",APP_VERSION)}})},[]);
   const [showOnboarding,setShowOnboarding]=useState(false);
@@ -1287,11 +1289,65 @@ export default function App() {
         <div style={{fontSize:10,fontWeight:600,letterSpacing:2,color:T.textDim,textTransform:"uppercase",marginTop:1,fontFamily:F.body}}>{hdr[tab][1]}</div>
       </div>
       <button onClick={()=>setShowSettings(!showSettings)} aria-label="Settings" style={{background:"none",border:"none",cursor:"pointer",padding:6}}>{I.gear(showSettings?T.gold:T.textDim)}</button>
-      {user?<button onClick={handleSignOut} aria-label="Sign out" style={{background:"none",border:"none",cursor:"pointer",padding:4,display:"flex",alignItems:"center",gap:4}}>
-        <div style={{width:28,height:28,borderRadius:14,background:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#000",fontFamily:F.heading}}>{(user.user_metadata?.display_name||user.email||"?")[0].toUpperCase()}</div>
+      {user?<button onClick={()=>setShowDrawer(true)} aria-label="Profile menu" style={{background:"none",border:"none",cursor:"pointer",padding:2}}>
+        <div style={{width:30,height:30,borderRadius:15,background:userAvatar?`url(${userAvatar}) center/cover`:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#000",fontFamily:F.heading,border:`2px solid ${T.gold}44`,overflow:"hidden"}}>{!userAvatar&&(user.user_metadata?.display_name||user.email||"?")[0].toUpperCase()}</div>
       </button>
       :<button onClick={()=>setAuthMode("signin")} style={{padding:"5px 12px",borderRadius:4,border:`1px solid ${T.gold}`,background:"transparent",color:T.gold,fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:F.body,flexShrink:0}}>Sign In</button>}
     </div>
+
+    {/* Side Drawer */}
+    {showDrawer&&<div style={{position:"fixed",inset:0,zIndex:450,display:"flex"}} onClick={()=>setShowDrawer(false)}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,.6)"}}/>
+      <div style={{marginLeft:"auto",width:"80%",maxWidth:320,background:T.surface,height:"100%",overflow:"auto",position:"relative",animation:"slideInRight .2s ease-out",boxShadow:"-4px 0 20px rgba(0,0,0,.5)"}} onClick={e=>e.stopPropagation()}>
+        {/* Profile header */}
+        <div style={{padding:"24px 20px 16px",background:`linear-gradient(135deg,${T.card},${T.surface})`,borderBottom:`1px solid ${T.cardBorder}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <label style={{cursor:"pointer",position:"relative"}}>
+              <div style={{width:52,height:52,borderRadius:26,background:userAvatar?`url(${userAvatar}) center/cover`:`linear-gradient(135deg,${T.gold},${T.goldDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:"#000",fontFamily:F.heading,border:`3px solid ${T.gold}`,overflow:"hidden"}}>
+                {!userAvatar&&(user?.user_metadata?.display_name||user?.email||"?")[0].toUpperCase()}
+              </div>
+              <div style={{position:"absolute",bottom:-2,right:-2,width:20,height:20,borderRadius:10,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>{"\uD83D\uDCF7"}</div>
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>{const dataUrl=ev.target.result;setUserAvatar(dataUrl);if(supabase)profileApi.update({avatar_url:dataUrl}).then(()=>toast("Avatar updated!"))};reader.readAsDataURL(file)}}/>
+            </label>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:16,fontWeight:700,color:T.accent,fontFamily:F.heading,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.user_metadata?.display_name||user?.email?.split("@")[0]||"Planeswalker"}</div>
+              <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.email}</div>
+            </div>
+            <button onClick={()=>setShowDrawer(false)} style={{background:"none",border:"none",cursor:"pointer",padding:4,flexShrink:0}}>{I.close(T.textDim)}</button>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div style={{padding:"8px 0"}}>
+          {[
+            {icon:"\uD83D\uDD0D",label:"Search",action:()=>{setTab("search");setShowDrawer(false)}},
+            {icon:"\uD83D\uDCDA",label:"My Vault",action:()=>{setTab("vault");setShowDrawer(false)}},
+            {icon:"\u2694\uFE0F",label:"Battle & Trade",action:()=>{setTab("trade");setShowDrawer(false)}},
+            {divider:true},
+            {icon:"\u2699\uFE0F",label:"Settings",action:()=>{setShowSettings(true);setShowDrawer(false)}},
+            {icon:"\u2753",label:"FAQ & Guide",action:()=>{setShowFaq(true);setShowAbout(true);setShowDrawer(false)}},
+            {icon:"\u2728",label:"What's New",action:()=>{setShowChangelog(true);setShowAbout(true);setShowDrawer(false)}},
+            {divider:true},
+            {icon:"\uD83D\uDCE4",label:"Profile",desc:"Edit bio, avatar, favorite color",action:()=>{setTab("trade");setShowDrawer(false)}},
+          ].map((item,i)=>item.divider
+            ?<div key={i} style={{height:1,background:T.cardBorder,margin:"4px 16px"}}/>
+            :<button key={i} onClick={item.action} style={{display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 20px",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+              <span style={{fontSize:16,width:20,textAlign:"center"}}>{item.icon}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:T.text,fontFamily:F.body}}>{item.label}</div>
+                {item.desc&&<div style={{fontSize:10,color:T.textDim,fontFamily:F.body}}>{item.desc}</div>}
+              </div>
+            </button>
+          )}
+        </div>
+
+        {/* Sign Out at bottom */}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,padding:"16px 20px",borderTop:`1px solid ${T.cardBorder}`,background:T.surface,paddingBottom:"calc(16px + env(safe-area-inset-bottom))"}}>
+          <button onClick={()=>{handleSignOut();setShowDrawer(false)}} style={{width:"100%",padding:12,borderRadius:4,border:`1.5px solid ${T.red}`,background:"transparent",color:T.red,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:F.body}}>Sign Out</button>
+          <div style={{textAlign:"center",marginTop:8,fontSize:10,color:T.textDim,fontFamily:F.body}}>Arcane Vault v{APP_VERSION}</div>
+        </div>
+      </div>
+    </div>}
 
     {/* Settings panel */}
     {showSettings&&<div style={{padding:"12px 18px",background:T.surface,borderBottom:`1px solid ${T.cardBorder}`}}>
@@ -3009,8 +3065,8 @@ function RivalsTracker({decks,setDecks,toast,user}) {
             {!profile.avatar&&(displayName[0]||"?").toUpperCase()}
           </div>
           {editingProfile&&<label style={{position:"absolute",bottom:-2,right:-2,width:24,height:24,borderRadius:12,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:12}}>
-            {"\u270E"}
-            <input type="url" style={{display:"none"}} onChange={e=>{if(e.target.value)setProfile(p=>({...p,avatar:e.target.value}))}}/>
+            {"\uD83D\uDCF7"}
+            <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result}));reader.readAsDataURL(file)}}/>
           </label>}
         </div>
         <div style={{fontSize:18,fontWeight:700,color:T.accent,fontFamily:F.heading}}>{displayName}</div>
@@ -3040,8 +3096,11 @@ function RivalsTracker({decks,setDecks,toast,user}) {
         {/* Bio */}
         {editingProfile?<>
           <div style={{textAlign:"left",marginBottom:6}}>
-            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Avatar URL (paste image link)</div>
-            <input value={profile.avatar} onChange={e=>setProfile(p=>({...p,avatar:e.target.value}))} placeholder="https://..." style={{width:"100%",padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxSizing:"border-box",marginBottom:8}}/>
+            <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Profile Picture</div>
+            <label style={{display:"block",padding:"10px 14px",borderRadius:4,border:`1px dashed ${T.cardBorder}`,background:T.cardInner,cursor:"pointer",textAlign:"center",marginBottom:8}}>
+              <span style={{fontSize:12,color:T.gold,fontFamily:F.body,fontWeight:600}}>{profile.avatar?"Change photo":"Upload photo"}</span>
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files?.[0];if(!file)return;const reader=new FileReader();reader.onload=ev=>setProfile(p=>({...p,avatar:ev.target.result}));reader.readAsDataURL(file)}}/>
+            </label>
             <div style={{fontSize:11,color:T.textDim,fontFamily:F.body,marginBottom:4}}>Bio</div>
             <textarea value={profile.bio} onChange={e=>setProfile(p=>({...p,bio:e.target.value}))} placeholder="Tell your rivals about yourself..." maxLength={200} style={{width:"100%",height:60,padding:"8px 10px",borderRadius:4,border:`1px solid ${T.cardBorder}`,background:T.cardInner,color:T.text,fontSize:12,fontFamily:F.body,boxSizing:"border-box",resize:"none"}}/>
             <div style={{fontSize:10,color:T.textDim,textAlign:"right",fontFamily:F.body}}>{(profile.bio||"").length}/200</div>
